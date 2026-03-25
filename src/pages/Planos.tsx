@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   CalendarDays, Plus, Edit2, Trash2, Download, FileText, Table2, GripVertical,
-  ChevronDown, ChevronUp, BookOpen, X, Check, Settings,
+  ChevronDown, ChevronUp, BookOpen, X, Check, Settings, ExternalLink, Link2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/useToast'
 import { loadPlanos, savePlano, deletePlano } from '@/lib/storage'
 import { formatDate, generateDates } from '@/lib/utils'
 import type { Plano, PlanoAula, PlanoModulo, PlanoRef } from '@/types'
+import QRCode from 'qrcode'
 
 // ─── Demo data ────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ const DEMO: Plano[] = [
       { id: 'm2', title: 'Contemporâneos', description: 'Perspectivas atuais', order: 1 },
     ],
     aulas: [
-      { id: 'a1', date: '2026-03-10', title: 'Apresentação do curso', description: 'Apresentação da disciplina, objetivos e avaliações.', order: 0, moduleId: 'm1', references: [{ id: 'r1', title: 'A Imaginação Sociológica', authors: ['Mills'], year: 1959, type: 'mandatory' }] },
+      { id: 'a1', date: '2026-03-10', title: 'Apresentação do curso', description: 'Apresentação da disciplina, objetivos e avaliações.', order: 0, moduleId: 'm1', references: [{ id: 'r1', title: 'A Imaginação Sociológica', authors: ['Mills'], year: 1959, type: 'mandatory', url: 'https://archive.org/details/sociologicalimagination' }] },
       { id: 'a2', date: '2026-03-17', title: 'Marx e o materialismo histórico', description: 'Conceitos fundamentais do marxismo: materialismo, alienação, luta de classes.', order: 1, moduleId: 'm1', references: [] },
       { id: 'a3', date: '2026-03-24', title: 'Weber e a racionalização', description: 'Ação social, tipos ideais, ética protestante.', order: 2, moduleId: 'm1', references: [] },
     ],
@@ -294,7 +295,10 @@ function exportPlanoPDF(p: Plano) {
     if (mandatory.length > 0) {
       ensureSpace(6)
       const textX = drawRefTag('Leituras', [30, 80, 200], margin + 3, y)
-      const refText = mandatory.map((r) => r.title + (r.year ? ` (${r.year})` : '')).join('; ')
+      const refText = mandatory.map((r) => {
+        const link = r.url || (r.doi ? `doi.org/${r.doi}` : '')
+        return r.title + (r.year ? ` (${r.year})` : '') + (link ? ` — ${link}` : '')
+      }).join('; ')
       const lines = doc.splitTextToSize(refText, contentWidth - (textX - margin))
       ensureSpace(lines.length * 4)
       doc.setFont('helvetica', 'normal')
@@ -306,7 +310,10 @@ function exportPlanoPDF(p: Plano) {
     if (complementary.length > 0) {
       ensureSpace(6)
       const textX = drawRefTag('Compl.', [180, 90, 20], margin + 3, y)
-      const refText = complementary.map((r) => r.title + (r.year ? ` (${r.year})` : '')).join('; ')
+      const refText = complementary.map((r) => {
+        const link = r.url || (r.doi ? `doi.org/${r.doi}` : '')
+        return r.title + (r.year ? ` (${r.year})` : '') + (link ? ` — ${link}` : '')
+      }).join('; ')
       const lines = doc.splitTextToSize(refText, contentWidth - (textX - margin))
       ensureSpace(lines.length * 4)
       doc.setFont('helvetica', 'normal')
@@ -531,12 +538,44 @@ function PlanoMeta({ open, onClose, onSave, initial }: PlanoMetaProps) {
   )
 }
 
+// ─── Resource card with QR code ───────────────────────────────────────────
+
+function ResourceCard({ ref: r }: { ref: PlanoRef }) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>('')
+  const link = r.url || (r.doi ? `https://doi.org/${r.doi}` : '')
+
+  useEffect(() => {
+    if (!link) return
+    QRCode.toDataURL(link, { width: 80, margin: 1, color: { dark: '#1e3a5f', light: '#ffffff' } })
+      .then(setQrDataUrl)
+      .catch(() => {/* silent */})
+  }, [link])
+
+  return (
+    <div className="flex items-start gap-2 p-2 rounded-lg border border-gray-200 bg-gray-50">
+      {qrDataUrl && <img src={qrDataUrl} alt="QR" className="w-14 h-14 shrink-0 rounded" />}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-gray-800 leading-snug line-clamp-2">{r.title}</p>
+        {r.authors?.length ? <p className="text-xs text-gray-500 mt-0.5 truncate">{r.authors.join(', ')}{r.year ? ` (${r.year})` : ''}</p> : null}
+        {link && (
+          <a href={link} target="_blank" rel="noreferrer"
+            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 truncate max-w-full">
+            <Link2 className="w-3 h-3 shrink-0" />
+            <span className="truncate">{link.replace(/^https?:\/\//, '')}</span>
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Reference adder ──────────────────────────────────────────────────────
 
 function RefAdder({ refs, onChange }: { refs: PlanoRef[]; onChange: (refs: PlanoRef[]) => void }) {
   const [title, setTitle] = useState('')
   const [authors, setAuthors] = useState('')
   const [year, setYear] = useState('')
+  const [url, setUrl] = useState('')
   const [type, setType] = useState<PlanoRef['type']>('mandatory')
 
   function add() {
@@ -544,9 +583,11 @@ function RefAdder({ refs, onChange }: { refs: PlanoRef[]; onChange: (refs: Plano
     onChange([...refs, {
       id: crypto.randomUUID(), title: title.trim(),
       authors: authors.split(',').map((a) => a.trim()).filter(Boolean),
-      year: year ? parseInt(year) : undefined, type,
+      year: year ? parseInt(year) : undefined,
+      url: url.trim() || undefined,
+      type,
     }])
-    setTitle(''); setAuthors(''); setYear('')
+    setTitle(''); setAuthors(''); setYear(''); setUrl('')
   }
 
   return (
@@ -555,7 +596,10 @@ function RefAdder({ refs, onChange }: { refs: PlanoRef[]; onChange: (refs: Plano
         <div className="space-y-1">
           {refs.map((r) => (
             <div key={r.id} className={`flex items-center gap-2 px-2 py-1 rounded text-xs border ${r.type === 'mandatory' ? 'bg-blue-50 border-blue-200 text-blue-800' : 'bg-orange-50 border-orange-200 text-orange-800'}`}>
-              <span className="flex-1 truncate">{r.title}{r.authors?.length ? ` — ${r.authors.join(', ')}` : ''}{r.year ? ` (${r.year})` : ''}</span>
+              <span className="flex-1 truncate">
+                {r.title}{r.authors?.length ? ` — ${r.authors.join(', ')}` : ''}{r.year ? ` (${r.year})` : ''}
+                {r.url && <a href={r.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="ml-1 opacity-70 hover:opacity-100 inline-flex items-center"><ExternalLink className="w-3 h-3" /></a>}
+              </span>
               <button type="button" onClick={() => onChange(refs.filter((x) => x.id !== r.id))} className="opacity-60 hover:opacity-100">
                 <X className="w-3 h-3" />
               </button>
@@ -569,6 +613,7 @@ function RefAdder({ refs, onChange }: { refs: PlanoRef[]; onChange: (refs: Plano
         </div>
         <Input value={authors} onChange={(e) => setAuthors(e.target.value)} placeholder="Autor(es)" className="h-8 text-xs w-28" />
         <Input value={year} onChange={(e) => setYear(e.target.value)} placeholder="Ano" className="h-8 text-xs w-16" type="number" />
+        <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Link (URL)" className="h-8 text-xs w-40" type="url" />
         <Select value={type} onValueChange={(v) => setType(v as PlanoRef['type'])}>
           <SelectTrigger className="h-8 text-xs w-28">
             <SelectValue />
@@ -918,6 +963,23 @@ function PlanoCard({ plano, onEdit, onDelete }: { plano: Plano; onEdit: () => vo
                     )
                   })}
                 </div>
+              </div>
+            )}
+            {plano.aulas.some((a) => a.references.some((r) => r.url || r.doi)) && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Recursos com Link</p>
+                {plano.aulas
+                  .filter((a) => a.references.some((r) => r.url || r.doi))
+                  .map((aula) => (
+                    <div key={aula.id} className="mb-3">
+                      <p className="text-xs font-medium text-gray-600 mb-1.5">{aula.title}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {aula.references
+                          .filter((r) => r.url || r.doi)
+                          .map((r) => <ResourceCard key={r.id} ref={r} />)}
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
           </div>

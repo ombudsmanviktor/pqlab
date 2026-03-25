@@ -97,6 +97,7 @@ export interface PlanoRef {
   authors?: string[]
   year?: number
   doi?: string
+  url?: string
   type: RefType
 }
 
@@ -164,6 +165,47 @@ export interface Lista {
   created_at: string
   updated_at: string
 }
+
+// ─── Módulo 7: Revisões ───────────────────────────────────────────────────
+
+export type TipoBanca = 'tcc' | 'mestrado-academico' | 'mestrado-profissional' | 'doutorado' | 'outro'
+export type ModalidadeBanca = 'qualificacao' | 'defesa'
+
+export interface Arguicao {
+  id: string
+  subtype: 'arguicao'
+  titulo: string
+  autor: string
+  instituicao: string
+  orientador: string
+  bancaMembers: string[]
+  tipoBanca: TipoBanca
+  tipoOutro?: string
+  modalidade?: ModalidadeBanca
+  data: string              // YYYY-MM-DD
+  comentariosGerais: string
+  questoesTeoricas: string
+  questoesMetodologicas: string
+  comentariosEspecificos: string
+  conclusoes: string
+  anotacaoOutrosMembros: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Parecer {
+  id: string
+  subtype: 'parecer'
+  titulo: string
+  autor?: string
+  solicitante: string
+  data: string              // YYYY-MM-DD
+  parecer: string
+  created_at: string
+  updated_at: string
+}
+
+export type Revisao = Arguicao | Parecer
 
 // ─── Módulo 6: Listas Simples (sem checkbox) ──────────────────────────────
 

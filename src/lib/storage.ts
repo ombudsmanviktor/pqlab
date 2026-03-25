@@ -6,6 +6,7 @@
 //   data/fichamentos/{id}.yaml
 //   data/planos/{id}.yaml
 //   data/listas/{id}.yaml
+//   data/revisoes/{id}.yaml
 //   attachments/{module}/{id}/{filename}
 
 import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
@@ -28,6 +29,7 @@ import type {
   Lista,
   ListaSimples,
   ListaSimpleItem,
+  Revisao,
   Anexo,
 } from '@/types'
 
@@ -306,4 +308,21 @@ export async function saveListaSimples(lista: ListaSimples): Promise<void> {
 
 export async function deleteListaSimples(id: string): Promise<void> {
   await deleteYaml(`data/listassimples/${id}.yaml`, `Delete listasimples ${id}`)
+}
+
+// ─── REVISÕES ─────────────────────────────────────────────────────────────
+
+export async function loadRevisoes(): Promise<Revisao[]> {
+  const files = await listYamls('data/revisoes')
+  const docs = await Promise.all(files.map((f) => readYaml<Revisao>(f)))
+  return docs.sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+export async function saveRevisao(r: Revisao): Promise<void> {
+  const doc = { ...r, updated_at: new Date().toISOString() }
+  await writeYaml(`data/revisoes/${r.id}.yaml`, doc, `Update revisao ${r.id}`)
+}
+
+export async function deleteRevisao(id: string): Promise<void> {
+  await deleteYaml(`data/revisoes/${id}.yaml`, `Delete revisao ${id}`)
 }

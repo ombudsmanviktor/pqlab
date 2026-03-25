@@ -12,6 +12,7 @@ import { Planos } from '@/pages/Planos'
 import { ListasSimples } from '@/pages/ListasSimples'
 import { Tarefas } from '@/pages/Tarefas'
 import { MapaConhecimento } from '@/pages/MapaConhecimento'
+import { Revisoes } from '@/pages/Revisoes'
 import { NotFound } from '@/pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -37,6 +38,7 @@ export default function App() {
               <Route path="/diario" element={<DiarioCampo />} />
               <Route path="/bookmarks" element={<Bookmarks />} />
               <Route path="/fichamentos" element={<Fichamentos />} />
+              <Route path="/revisoes" element={<Revisoes />} />
               <Route path="/planos" element={<Planos />} />
               <Route path="/listas" element={<ListasSimples />} />
               <Route path="/tarefas" element={<Tarefas />} />

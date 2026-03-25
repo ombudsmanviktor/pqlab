@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   BookOpen, Bookmark, FileText, CalendarDays, List, CheckSquare,
-  LogOut, Menu, X, GraduationCap, Network,
+  LogOut, Menu, X, GraduationCap, Network, ClipboardCheck,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -13,8 +13,9 @@ const navItems = [
   { to: '/listas',      label: 'Listas e Memorandos', icon: List,         color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-100' },
   { to: '/tarefas',     label: 'Tarefas',             icon: CheckSquare,  color: 'text-pink-600',   bg: 'bg-pink-50',   activeBg: 'bg-pink-100' },
   { to: '/bookmarks',   label: 'Favoritos',           icon: Bookmark,     color: 'text-blue-600',   bg: 'bg-blue-50',   activeBg: 'bg-blue-100' },
-  { to: '/fichamentos', label: 'Fichamentos',          icon: FileText,     color: 'text-green-600',  bg: 'bg-green-50',  activeBg: 'bg-green-100' },
-  { to: '/planos',      label: 'Planos',               icon: CalendarDays, color: 'text-purple-600', bg: 'bg-purple-50', activeBg: 'bg-purple-100' },
+  { to: '/fichamentos', label: 'Fichamentos',          icon: FileText,       color: 'text-green-600',  bg: 'bg-green-50',  activeBg: 'bg-green-100' },
+  { to: '/revisoes',    label: 'Revisões',             icon: ClipboardCheck, color: 'text-teal-600',   bg: 'bg-teal-50',   activeBg: 'bg-teal-100' },
+  { to: '/planos',      label: 'Planos',               icon: CalendarDays,   color: 'text-purple-600', bg: 'bg-purple-50', activeBg: 'bg-purple-100' },
 ]
 
 function SidebarContent({ onClose }: { onClose?: () => void }) {
