@@ -1,4 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import jsPDF from 'jspdf'
 import {
   Document, Paragraph, TextRun, HeadingLevel, Packer,
@@ -6,7 +8,7 @@ import {
 } from 'docx'
 import {
   ClipboardCheck, Plus, Edit2, Trash2, Download, FileText,
-  ChevronDown, ChevronUp, X,
+  ChevronDown, ChevronUp, X, Search,
   Calendar, Users, BookOpen,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,7 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ToastContainer } from '@/components/ui/toast'
-import { MarkdownEditor, MarkdownRenderer } from '@/components/shared/MarkdownEditor'
+import { MarkdownEditor } from '@/components/shared/MarkdownEditor'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/useToast'
 import { loadRevisoes, saveRevisao, deleteRevisao } from '@/lib/storage'
@@ -168,36 +170,32 @@ const INSTITUICOES_BRASIL = [
 
 // ─── Page-number tagging ───────────────────────────────────────────────────
 
-const PAGE_REGEX = /\b(pp?\.\s*\d+(?:[–\-]\d+)?)/g
+// PAGE_REGEX used in PageTaggedMarkdown and renderTextWithPageTags
+const _PAGE_REGEX = /\b(pp?\.\s*\d+(?:[–\-]\d+)?)/g
+void _PAGE_REGEX // regex is inlined in consumers; keep for documentation
 
 
 function PageTaggedMarkdown({ content }: { content: string }) {
   if (!content) return null
-
-  // Split content by page tags, render markdown for text parts, tags as badges
-  const parts: Array<{ type: 'text' | 'tag'; value: string }> = []
-  let last = 0
-  let match: RegExpExecArray | null
-  const re = new RegExp(PAGE_REGEX.source, 'g')
-
-  while ((match = re.exec(content)) !== null) {
-    if (match.index > last) parts.push({ type: 'text', value: content.slice(last, match.index) })
-    parts.push({ type: 'tag', value: match[1] })
-    last = match.index + match[0].length
-  }
-  if (last < content.length) parts.push({ type: 'text', value: content.slice(last) })
-
+  // Replace page refs with pseudo-links so they stay inline within markdown paragraphs
+  const processed = content.replace(/\b(pp?\.\s*\d+(?:[–\-]\d+)?)/g, (m) => `[${m}](#pg)`)
   return (
     <div className="prose prose-sm max-w-none text-gray-700">
-      {parts.map((p, i) =>
-        p.type === 'tag' ? (
-          <span key={i} className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-teal-100 text-teal-800 mx-0.5 select-none">
-            {p.value}
-          </span>
-        ) : (
-          <MarkdownRenderer key={i} content={p.value} />
-        )
-      )}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) =>
+            href === '#pg' ? (
+              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono bg-teal-100 text-teal-800 mx-0.5 select-none">
+                {children}
+              </span>
+            ) : (
+              <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+            ),
+        }}
+      >
+        {processed}
+      </ReactMarkdown>
     </div>
   )
 }
@@ -237,11 +235,60 @@ function formatAPAArguicao(a: Arguicao): string {
 // ─── Export helpers ────────────────────────────────────────────────────────
 
 function stripPageTags(text: string): string {
-  return text // page tags are not modified in markdown — they're already plain text
+  return text // page tags are already plain text in markdown source
 }
 
 function toPlain(md: string): string {
   return md.replace(/[#*_~`>]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim()
+}
+
+// Render a text block in jsPDF with page refs highlighted in teal bold.
+// Returns the new y position after the last line.
+function renderTextWithPageTags(
+  doc: jsPDF, text: string,
+  x: number, y: number, maxWidth: number, lineHeightMm: number,
+  pageHeight: number, margin: number
+): number {
+  if (!text.trim()) return y
+  const plain = toPlain(text)
+  const fontSize = doc.getFontSize()
+  const sf = (doc as unknown as { internal: { scaleFactor: number } }).internal.scaleFactor
+  const getW = (t: string) => doc.getStringUnitWidth(t) * fontSize / sf
+
+  // Tokenize into segments: {value, isTag}
+  type Tok = { value: string; isTag: boolean }
+  const tokens: Tok[] = []
+  const re = /\b(pp?\.\s*\d+(?:[–\-]\d+)?)/g
+  let last = 0; let m: RegExpExecArray | null
+  while ((m = re.exec(plain)) !== null) {
+    if (m.index > last) tokens.push({ value: plain.slice(last, m.index), isTag: false })
+    tokens.push({ value: m[1], isTag: true })
+    last = m.index + m[0].length
+  }
+  if (last < plain.length) tokens.push({ value: plain.slice(last), isTag: false })
+
+  // Word-wrap and render
+  let curX = x
+  for (const { value, isTag } of tokens) {
+    const words = value.split(/(\s+)/)
+    for (const word of words) {
+      if (!word) continue
+      const w = getW(word)
+      if (word.trim() && curX + w > x + maxWidth + 0.5) {
+        curX = x; y += lineHeightMm
+        if (y > pageHeight - margin) { doc.addPage(); y = margin }
+      }
+      if (isTag) {
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(13, 148, 136)
+      } else {
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(50, 50, 50)
+      }
+      if (word.trim()) doc.text(word, curX, y)
+      curX += w
+    }
+  }
+  doc.setFont('helvetica', 'normal'); doc.setTextColor(50, 50, 50)
+  return y + lineHeightMm
 }
 
 function exportArguicaoMarkdown(a: Arguicao) {
@@ -302,24 +349,33 @@ function exportArguicaoPDF(a: Arguicao) {
   const pageWidth = 210
   const pageHeight = 297
   const contentWidth = pageWidth - margin * 2
-  let y = 20
+  let y = margin
 
   const ensureSpace = (need: number) => {
     if (y + need > pageHeight - margin) { doc.addPage(); y = margin }
   }
 
-  // Header
-  doc.setFillColor(13, 148, 136) // teal-600
-  doc.rect(0, 0, pageWidth, 28, 'F')
+  // Header — clean, no background fill
   doc.setFont('helvetica', 'bold')
-  doc.setFontSize(14)
-  doc.setTextColor(255, 255, 255)
-  const titleLines = doc.splitTextToSize(a.titulo, contentWidth - 10)
-  doc.text(titleLines, margin, 12)
-  doc.setFontSize(8)
+  doc.setFontSize(9)
+  doc.setTextColor(13, 148, 136)
+  doc.text('pqLAB · Arguição', margin, y)
+  y += 6
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(30, 30, 30)
+  const titleLines = doc.splitTextToSize(a.titulo, contentWidth)
+  doc.text(titleLines, margin, y)
+  y += titleLines.length * 6 + 2
   doc.setFont('helvetica', 'normal')
-  doc.text(`Arguição · ${TIPO_LABELS[a.tipoBanca]}${a.modalidade ? ` — ${a.modalidade === 'qualificacao' ? 'Qualificação' : 'Defesa'}` : ''} · ${formatDate(a.data)}`, margin, 24)
-  y = 36
+  doc.setFontSize(8)
+  doc.setTextColor(100, 100, 100)
+  doc.text(`${TIPO_LABELS[a.tipoBanca]}${a.modalidade ? ` · ${a.modalidade === 'qualificacao' ? 'Qualificação' : 'Defesa'}` : ''} · ${formatDate(a.data)}`, margin, y)
+  y += 5
+  doc.setDrawColor(200, 200, 200)
+  doc.setLineWidth(0.3)
+  doc.line(margin, y, pageWidth - margin, y)
+  y += 7
 
   // Metadata
   const meta: [string, string][] = [
@@ -352,14 +408,11 @@ function exportArguicaoPDF(a: Arguicao) {
   for (const [title, content] of sections) {
     if (!content.trim()) continue
     ensureSpace(12)
-    doc.setFillColor(240, 253, 250)
     doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(13, 148, 136)
     doc.text(title.toUpperCase(), margin, y); y += 5
-    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(50, 50, 50)
-    const plain = toPlain(content)
-    const lines = doc.splitTextToSize(plain, contentWidth)
-    ensureSpace(lines.length * 4.5)
-    doc.text(lines, margin, y); y += lines.length * 4.5 + 6
+    doc.setFontSize(9)
+    y = renderTextWithPageTags(doc, content, margin, y, contentWidth, 4.5, pageHeight, margin)
+    y += 4
   }
 
   // Page numbers
@@ -379,20 +432,33 @@ function exportParecerPDF(p: Parecer) {
   const pageWidth = 210
   const pageHeight = 297
   const contentWidth = pageWidth - margin * 2
-  let y = 20
+  let y = margin
 
   const ensureSpace = (need: number) => {
     if (y + need > pageHeight - margin) { doc.addPage(); y = margin }
   }
 
-  doc.setFillColor(13, 148, 136)
-  doc.rect(0, 0, pageWidth, 28, 'F')
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(14); doc.setTextColor(255, 255, 255)
-  const titleLines = doc.splitTextToSize(p.titulo, contentWidth - 10)
-  doc.text(titleLines, margin, 12)
-  doc.setFontSize(8); doc.setFont('helvetica', 'normal')
-  doc.text(`Parecer · ${formatDate(p.data)}`, margin, 24)
-  y = 36
+  // Header — clean, no background fill
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(13, 148, 136)
+  doc.text('pqLAB · Parecer', margin, y)
+  y += 6
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(30, 30, 30)
+  const titleLines = doc.splitTextToSize(p.titulo, contentWidth)
+  doc.text(titleLines, margin, y)
+  y += titleLines.length * 6 + 2
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(100, 100, 100)
+  doc.text(`${formatDate(p.data)}${p.solicitante ? ` · ${p.solicitante}` : ''}`, margin, y)
+  y += 5
+  doc.setDrawColor(200, 200, 200)
+  doc.setLineWidth(0.3)
+  doc.line(margin, y, pageWidth - margin, y)
+  y += 7
 
   const meta: [string, string][] = [
     [p.autor ? 'Autor(a)' : '', p.autor || ''],
@@ -412,11 +478,8 @@ function exportParecerPDF(p: Parecer) {
   ensureSpace(12)
   doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(13, 148, 136)
   doc.text('PARECER', margin, y); y += 5
-  doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(50, 50, 50)
-  const plain = toPlain(p.parecer)
-  const lines = doc.splitTextToSize(plain, contentWidth)
-  ensureSpace(lines.length * 4.5)
-  doc.text(lines, margin, y)
+  doc.setFontSize(9)
+  renderTextWithPageTags(doc, p.parecer, margin, y, contentWidth, 4.5, pageHeight, margin)
 
   const total = doc.getNumberOfPages()
   for (let i = 1; i <= total; i++) {
@@ -768,10 +831,11 @@ function ParecerForm({
         <Label className="text-xs">Título do trabalho *</Label>
         <Input value={form.titulo} onChange={(e) => set('titulo', e.target.value)} placeholder="Título do artigo, projeto ou livro" className="mt-1" />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-3 items-end">
         <div>
-          <Label className="text-xs">Autor(a) <span className="text-gray-400">(opcional — deixe em branco se avaliação cega)</span></Label>
-          <Input value={form.autor ?? ''} onChange={(e) => set('autor', e.target.value || undefined)} placeholder="Nome do(a) autor(a)" className="mt-1" />
+          <Label className="text-xs">Autor(a) <span className="text-gray-400">(opcional)</span></Label>
+          <p className="text-xs text-gray-400 mb-1">Deixe em branco para avaliação cega.</p>
+          <Input value={form.autor ?? ''} onChange={(e) => set('autor', e.target.value || undefined)} placeholder="Nome do(a) autor(a)" />
         </div>
         <div>
           <Label className="text-xs">Data do parecer</Label>
@@ -1014,6 +1078,7 @@ export function Revisoes() {
   const [editing, setEditing] = useState<Revisao | undefined>()
   const [refFormat, setRefFormat] = useState<RefFormat>('abnt')
   const [filterType, setFilterType] = useState<'all' | 'arguicao' | 'parecer'>('all')
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     if (isDemoMode) return
@@ -1048,7 +1113,26 @@ export function Revisoes() {
     setEditing(undefined); setFormType(t); setChooserOpen(false)
   }
 
-  const filtered = filterType === 'all' ? revisoes : revisoes.filter((r) => r.subtype === filterType)
+  const filtered = useMemo(() => {
+    let result = filterType === 'all' ? revisoes : revisoes.filter((r) => r.subtype === filterType)
+    const q = search.trim().toLowerCase()
+    if (q) {
+      result = result.filter((r) => {
+        if (r.subtype === 'arguicao') {
+          return r.titulo.toLowerCase().includes(q) ||
+            r.autor.toLowerCase().includes(q) ||
+            r.instituicao.toLowerCase().includes(q) ||
+            r.data.includes(q)
+        } else {
+          return r.titulo.toLowerCase().includes(q) ||
+            (r.autor?.toLowerCase().includes(q) ?? false) ||
+            r.solicitante.toLowerCase().includes(q) ||
+            r.data.includes(q)
+        }
+      })
+    }
+    return result
+  }, [revisoes, filterType, search])
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Carregando…</div>
 
@@ -1064,6 +1148,20 @@ export function Revisoes() {
           <Badge variant="outline" className="text-xs">{revisoes.length}</Badge>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar..."
+              className="h-8 pl-8 pr-3 text-xs w-44"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
           {/* Filter */}
           <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
             <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
