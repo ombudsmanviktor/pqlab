@@ -1,0 +1,31 @@
+[0188] 2026-03-25 — feat: módulo Revisões (Arguição + Parecer)
+Novo módulo adicionado à sidebar com ícone ClipboardCheck e cor teal. Suporta dois
+subtipos: Arguição (banca acadêmica) com campos de título, autora(o), instituição (lista
+de ~100 instituições brasileiras), orientadora(o), membros da banca, tipo de banca
+(TCC/Mestrado Acadêmico/Mestrado Profissional/Doutorado/Outro), modalidade
+(Qualificação/Defesa) e seis seções de texto livre (Comentários Gerais, Questões
+Teóricas, Questões Metodológicas, Comentários Específicos, Conclusões, Anotações de
+Outros Membros da Banca); e Parecer (avaliação cega ou aberta) com título, autora(o)
+opcional, solicitante, data e texto do parecer. Implementado seletor de formato de
+visualização (ABNT/APA/Tabela) para Arguições. Auto-detecção de referências de páginas
+(p. X, pp. X–Y) exibidas como badges teal não clicáveis na visualização. Exports em
+PDF (jsPDF, cabeçalho teal), Markdown, DOCX (docx v9.5.0) e CSV. Dados demo incluídos.
+Não indexado no Mapa de Conhecimento. Persistência via YAML em data/revisoes/{id}.yaml.
+
+[0189] 2026-03-25 — feat: campo URL em referências de Planos + QR codes + ResourceCard
+Adicionado campo url? ao tipo PlanoRef. O formulário de adição de referências
+(RefAdder) ganhou campo de URL. Seção "Recursos com Link" exibida na visualização
+expandida do PlanoCard, com componente ResourceCard que gera QR code automaticamente
+via qrcode.toDataURL() para cada referência com URL ou DOI. Exportação PDF inclui
+a URL após o título da referência. Dependência qrcode (^1.5.4) adicionada.
+
+[0190] 2026-03-25 — fix: erros TypeScript em Revisoes.tsx quebrando CI
+Removidas importações não utilizadas: XLSX, AlignmentType, BorderStyle, LayoutGrid,
+ListIcon, User, Building2, DialogFooter, Tabs/TabsList/TabsTrigger/TabsContent.
+Removida função PageTaggedText (não utilizada; PageTaggedMarkdown cobre o caso de uso).
+Corrigidas chamadas toast() de assinatura de 2 argumentos para objeto { title, variant }
+conforme interface do useToast hook. Build TypeScript passa sem erros.
+
+[0191] 2026-03-25 — chore: screenshots módulo Revisões
+Gerados screenshots 08-revisoes.png (listagem) e 08-revisoes-exp.png (Arguição expandida
+com badge de páginas teal visível). Screenshots salvas na pasta /screenshots.
