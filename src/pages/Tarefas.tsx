@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   CheckSquare, Square, Plus, Edit2, Trash2, GripVertical, X,
-  ChevronDown, ChevronUp, FolderPlus, LayoutGrid, List as ListIcon, Calendar,
+  ChevronDown, ChevronUp, FolderPlus, LayoutGrid, List as ListIcon, Calendar, Tag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -38,6 +38,363 @@ const DEMO: Lista[] = [
     created_at: '2026-03-01T00:00:00Z', updated_at: '2026-03-01T00:00:00Z',
   },
 ]
+
+// ─── Canvas tag colors ────────────────────────────────────────────────────
+const TAG_COLORS = [
+  { bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-200' },
+  { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
+  { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
+  { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-200' },
+]
+function tagColor(idx: number) { return TAG_COLORS[idx % TAG_COLORS.length] }
+
+// ─── Canvas card edit dialog ───────────────────────────────────────────────
+function CanvasCardEditDialog({
+  open, onClose, onSave, item, canvaTags,
+}: {
+  open: boolean; onClose: () => void; onSave: (item: ListaItem) => void
+  item: ListaItem; canvaTags: string[]
+}) {
+  const [title, setTitle] = useState(item.title)
+  const [description, setDescription] = useState(item.description ?? '')
+  const [selectedTags, setSelectedTags] = useState<string[]>(item.tags ?? [])
+
+  useEffect(() => {
+    if (open) {
+      setTitle(item.title)
+      setDescription(item.description ?? '')
+      setSelectedTags(item.tags ?? [])
+    }
+  }, [open, item])
+
+  function handleSave() {
+    if (!title.trim()) return
+    onSave({ ...item, title: title.trim(), description: description || undefined, tags: selectedTags })
+    onClose()
+  }
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag])
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader><DialogTitle>Editar card</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Título *</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (title.trim()) handleSave() } }} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="flex items-center gap-1.5">
+              Descrição
+              <span className="text-xs text-gray-400 font-normal">(Markdown · <code className="bg-gray-100 px-1 rounded">[[wikilinks]]</code>)</span>
+            </Label>
+            <MarkdownEditor value={description} onChange={setDescription} minHeight={140}
+              placeholder="Notas, contexto, [[título de outra tarefa]]..." />
+          </div>
+          {canvaTags.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Tags</Label>
+              <div className="flex flex-wrap gap-2">
+                {canvaTags.map((tag, idx) => {
+                  const c = tagColor(idx)
+                  const active = selectedTags.includes(tag)
+                  return (
+                    <button key={tag} type="button" onClick={() => toggleTag(tag)}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all
+                        ${active ? `${c.bg} ${c.text} ${c.border} shadow-sm` : 'bg-white text-gray-400 border-gray-200 hover:border-gray-400'}`}>
+                      {active ? '✓ ' : ''}{tag}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={!title.trim()}>Salvar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ─── Canvas item card (Tarefas) ────────────────────────────────────────────
+function CanvasItemCard({
+  item, canvaTags, onDragEnd, onUpdate, onDelete,
+}: {
+  item: ListaItem
+  canvaTags: string[]
+  onDragEnd: (x: number, y: number) => void
+  onUpdate: (item: ListaItem) => void
+  onDelete: () => void
+}) {
+  const [pos, setPos] = useState({ x: item.x ?? 40, y: item.y ?? 40 })
+  const [dragging, setDragging] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [tagPickerOpen, setTagPickerOpen] = useState(false)
+  const start = useRef<{ mx: number; my: number; px: number; py: number } | null>(null)
+
+  useEffect(() => {
+    if (!dragging) setPos({ x: item.x ?? 40, y: item.y ?? 40 })
+  }, [item.x, item.y]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+    if ((e.target as HTMLElement).closest('button,input,textarea')) return
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragging(true)
+    start.current = { mx: e.clientX, my: e.clientY, px: pos.x, py: pos.y }
+  }
+  function onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+    if (!dragging || !start.current) return
+    setPos({
+      x: Math.max(0, start.current.px + (e.clientX - start.current.mx)),
+      y: Math.max(0, start.current.py + (e.clientY - start.current.my)),
+    })
+  }
+  function onPointerUp() {
+    if (!dragging) return
+    setDragging(false)
+    onDragEnd(pos.x, pos.y)
+  }
+
+  const assignedTags = item.tags ?? []
+  const availableTags = canvaTags.filter((t) => !assignedTags.includes(t))
+
+  function removeTag(tag: string) {
+    onUpdate({ ...item, tags: assignedTags.filter((t) => t !== tag) })
+  }
+  function addTag(tag: string) {
+    onUpdate({ ...item, tags: [...assignedTags, tag] })
+    setTagPickerOpen(false)
+  }
+
+  const descPreview = item.description
+    ? item.description.replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/[#*_`>]/g, '').trim()
+    : ''
+
+  return (
+    <div
+      style={{ position: 'absolute', left: pos.x, top: pos.y, zIndex: dragging ? 50 : 1, touchAction: 'none' }}
+      className={`w-56 bg-white rounded-xl border select-none transition-shadow flex flex-col
+        ${dragging ? 'shadow-xl border-pink-300 cursor-grabbing' : 'shadow-sm border-gray-200 cursor-grab'}
+        ${item.done ? 'opacity-60' : ''}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <div className="flex items-start gap-1.5 px-2.5 pt-2.5 pb-2 border-b border-gray-100">
+        <button onClick={() => onUpdate({ ...item, done: !item.done })} className="shrink-0 mt-0.5">
+          {item.done
+            ? <CheckSquare className="w-4 h-4 text-green-500" />
+            : <Square className="w-4 h-4 text-gray-400 hover:text-gray-600" />}
+        </button>
+        <span className={`flex-1 text-sm font-medium leading-snug ${item.done ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+          {item.title}
+        </span>
+        <div className="flex shrink-0 gap-0.5 ml-1">
+          <button onClick={() => setEditOpen(true)} className="p-1 text-gray-300 hover:text-pink-500 transition-colors" title="Editar">
+            <Edit2 className="w-3.5 h-3.5" />
+          </button>
+          <button onClick={onDelete} className="p-1 text-gray-300 hover:text-red-500 transition-colors" title="Excluir">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {descPreview && (
+        <div className="px-2.5 py-2 text-xs text-gray-500 leading-relaxed line-clamp-3 border-b border-gray-50">
+          {descPreview}
+        </div>
+      )}
+
+      {(assignedTags.length > 0 || availableTags.length > 0) && (
+        <div className="px-2.5 py-2 flex flex-wrap gap-1 items-center">
+          {assignedTags.map((tag) => {
+            const idx = canvaTags.indexOf(tag)
+            const c = tagColor(idx >= 0 ? idx : 0)
+            return (
+              <span key={tag}
+                className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs font-medium border ${c.bg} ${c.text} ${c.border}`}>
+                {tag}
+                <button onClick={() => removeTag(tag)} className="opacity-60 hover:opacity-100 leading-none">
+                  <X className="w-2.5 h-2.5" />
+                </button>
+              </span>
+            )
+          })}
+          {availableTags.length > 0 && (
+            <div className="relative">
+              <button onClick={() => setTagPickerOpen((p) => !p)}
+                className="w-5 h-5 flex items-center justify-center rounded-full text-xs border border-dashed border-gray-300 text-gray-400 hover:border-pink-400 hover:text-pink-500 transition-colors"
+                title="Adicionar tag">
+                +
+              </button>
+              {tagPickerOpen && (
+                <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-lg border border-gray-200 p-1 z-50 flex flex-col gap-0.5 min-w-max">
+                  {availableTags.map((tag) => {
+                    const idx = canvaTags.indexOf(tag)
+                    const c = tagColor(idx >= 0 ? idx : 0)
+                    return (
+                      <button key={tag} onClick={() => addTag(tag)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium text-left ${c.bg} ${c.text} hover:opacity-90`}>
+                        {tag}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      <CanvasCardEditDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        onSave={(updated) => { onUpdate(updated); setEditOpen(false) }}
+        item={item}
+        canvaTags={canvaTags}
+      />
+    </div>
+  )
+}
+
+// ─── Canvas editor (Tarefas) ───────────────────────────────────────────────
+function CanvasEditor({ lista, onSave, onClose }: { lista: Lista; onSave: (l: Lista) => void; onClose: () => void }) {
+  const [current, setCurrent] = useState<Lista>(lista)
+  const [saving, setSaving] = useState(false)
+  const [filterTag, setFilterTag] = useState<string | null>(null)
+  const [newTagInput, setNewTagInput] = useState('')
+
+  function addTag() {
+    const tag = newTagInput.trim()
+    if (!tag || current.canvaTags?.includes(tag)) return
+    setCurrent((prev) => ({ ...prev, canvaTags: [...(prev.canvaTags ?? []), tag] }))
+    setNewTagInput('')
+  }
+
+  function removeCanvaTag(tag: string) {
+    setCurrent((prev) => ({
+      ...prev,
+      canvaTags: (prev.canvaTags ?? []).filter((t) => t !== tag),
+      items: prev.items.map((i) => ({ ...i, tags: i.tags?.filter((t) => t !== tag) })),
+    }))
+    if (filterTag === tag) setFilterTag(null)
+  }
+
+  function handleDragEnd(id: string, x: number, y: number) {
+    setCurrent((prev) => ({
+      ...prev,
+      items: prev.items.map((i) => i.id === id ? { ...i, x, y } : i),
+    }))
+  }
+
+  function handleUpdate(item: ListaItem) {
+    setCurrent((prev) => ({ ...prev, items: prev.items.map((i) => i.id === item.id ? item : i) }))
+  }
+
+  function handleDelete(id: string) {
+    setCurrent((prev) => ({ ...prev, items: prev.items.filter((i) => i.id !== id) }))
+  }
+
+  function addItem() {
+    const newItem: ListaItem = {
+      id: crypto.randomUUID(),
+      title: 'Nova tarefa',
+      order: current.items.length,
+      done: false,
+      x: 60 + Math.round(Math.random() * 300),
+      y: 60 + Math.round(Math.random() * 200),
+    }
+    setCurrent((prev) => ({ ...prev, items: [...prev.items, newItem] }))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    await onSave({ ...current, updated_at: new Date().toISOString() })
+    setSaving(false)
+  }
+
+  const displayed = filterTag ? current.items.filter((i) => i.tags?.includes(filterTag)) : current.items
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-pink-50 border border-pink-200 rounded-xl p-3 flex items-center gap-3 flex-wrap">
+        <input
+          value={current.title}
+          onChange={(e) => setCurrent((prev) => ({ ...prev, title: e.target.value }))}
+          className="text-lg font-bold text-gray-900 bg-transparent focus:outline-none flex-1 min-w-0"
+          placeholder="Título do canva"
+        />
+        <Button size="sm" variant="outline" onClick={addItem}><Plus className="w-4 h-4" /> Item</Button>
+        <Button size="sm" onClick={handleSave} disabled={saving}>{saving ? 'Salvando…' : 'Salvar'}</Button>
+        <Button size="sm" variant="outline" onClick={onClose}>Voltar</Button>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <Tag className="w-4 h-4 text-gray-400 shrink-0" />
+        {(current.canvaTags ?? []).map((tag, idx) => {
+          const c = tagColor(idx)
+          return (
+            <button key={tag} onClick={() => setFilterTag(filterTag === tag ? null : tag)}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border transition-all
+                ${c.bg} ${c.text} ${c.border} ${filterTag === tag ? 'ring-2 ring-offset-1 ring-current' : ''}`}>
+              {tag}
+              <X className="w-3 h-3 opacity-60" onClick={(e) => { e.stopPropagation(); removeCanvaTag(tag) }} />
+            </button>
+          )
+        })}
+        <div className="flex gap-1">
+          <Input value={newTagInput} onChange={(e) => setNewTagInput(e.target.value)}
+            placeholder="Nova tag" className="h-7 text-xs w-24"
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }} />
+          <Button size="sm" onClick={addTag} disabled={!newTagInput.trim()} className="h-7 px-2"><Plus className="w-3 h-3" /></Button>
+        </div>
+        {filterTag && (
+          <button onClick={() => setFilterTag(null)} className="text-xs text-gray-500 underline">Limpar filtro</button>
+        )}
+      </div>
+
+      <div className="border border-gray-200 rounded-xl overflow-auto bg-[#f8f9fb]" style={{ height: 560 }}>
+        <div style={{ position: 'relative', width: 1600, height: 1100 }}>
+          <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} width="1600" height="1100">
+            <defs>
+              <pattern id="dots-t" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+                <circle cx="1" cy="1" r="1" fill="#e2e8f0" />
+              </pattern>
+            </defs>
+            <rect width="1600" height="1100" fill="url(#dots-t)" />
+          </svg>
+          {displayed.map((item) => (
+            <CanvasItemCard
+              key={item.id}
+              item={item}
+              canvaTags={current.canvaTags ?? []}
+              onDragEnd={(x, y) => handleDragEnd(item.id, x, y)}
+              onUpdate={handleUpdate}
+              onDelete={() => handleDelete(item.id)}
+            />
+          ))}
+          {displayed.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center text-gray-400">
+                <LayoutGrid className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                <p className="text-sm">{filterTag ? 'Nenhum item com esta tag' : 'Clique em + Item para adicionar'}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // ─── Item detail dialog (for description + group editing) ─────────────────
 
@@ -394,6 +751,8 @@ export function Tarefas() {
   const [editing, setEditing] = useState<Lista | null>(null)
   const [viewMode, setViewMode] = useState<'list' | 'cards'>('list')
   const [newListTitle, setNewListTitle] = useState('')
+  const [newKind, setNewKind] = useState<'lista' | 'canva' | null>(null)
+  const [newListOpen, setNewListOpen] = useState(false)
 
   useEffect(() => {
     if (isDemoMode) return
@@ -414,13 +773,14 @@ export function Tarefas() {
   }, [listas, register])
 
   function handleCreateList() {
-    if (!newListTitle.trim()) return
+    if (!newListTitle.trim() || !newKind) return
     const now = new Date().toISOString()
     const newLista: Lista = {
       id: crypto.randomUUID(), title: newListTitle.trim(),
+      kind: newKind,
       grupos: [], items: [], created_at: now, updated_at: now,
     }
-    setNewListTitle('')
+    setNewListTitle(''); setNewKind(null); setNewListOpen(false)
     setEditing(newLista)
   }
 
@@ -458,14 +818,16 @@ export function Tarefas() {
         <ToastContainer toasts={toasts} onDismiss={dismiss} />
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-pink-100 flex items-center justify-center">
-            <CheckSquare className="w-5 h-5 text-pink-600" />
+            {editing.kind === 'canva' ? <LayoutGrid className="w-5 h-5 text-pink-600" /> : <CheckSquare className="w-5 h-5 text-pink-600" />}
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900">{editing.title || 'Nova lista'}</h1>
             <p className="text-sm text-gray-500">Editando lista de tarefas</p>
           </div>
         </div>
-        <TarefaEditor lista={editing} onSave={handleSave} onClose={() => setEditing(null)} />
+        {editing.kind === 'canva'
+          ? <CanvasEditor lista={editing} onSave={handleSave} onClose={() => setEditing(null)} />
+          : <TarefaEditor lista={editing} onSave={handleSave} onClose={() => setEditing(null)} />}
       </div>
     )
   }
@@ -502,12 +864,20 @@ export function Tarefas() {
         <Input
           value={newListTitle}
           onChange={(e) => setNewListTitle(e.target.value)}
-          placeholder="Nova lista de tarefas... (Enter para criar)"
-          onKeyDown={(e) => { if (e.key === 'Enter') handleCreateList() }}
+          placeholder="Nova lista de tarefas... (Enter)"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              if (!newListTitle.trim()) return
+              const now = new Date().toISOString()
+              const l: Lista = { id: crypto.randomUUID(), title: newListTitle.trim(), kind: 'lista', grupos: [], items: [], created_at: now, updated_at: now }
+              setNewListTitle('')
+              setEditing(l)
+            }
+          }}
           className="flex-1"
         />
-        <Button onClick={handleCreateList} disabled={!newListTitle.trim()}>
-          <Plus className="w-4 h-4" /> Criar
+        <Button onClick={() => setNewListOpen(true)}>
+          <Plus className="w-4 h-4" /> Novo
         </Button>
       </div>
 
@@ -533,6 +903,9 @@ export function Tarefas() {
                     <div className="flex-1 min-w-0">
                       <h3 className="font-semibold text-gray-900">{lista.title}</h3>
                       {lista.description && <p className="text-sm text-gray-500 mt-0.5 line-clamp-1">{lista.description}</p>}
+                      {lista.kind === 'canva' && (
+                        <Badge className="text-xs bg-pink-100 text-pink-700 border-pink-200 mt-1">Canva</Badge>
+                      )}
                       <div className="flex items-center gap-2 mt-2">
                         <span className="text-xs text-gray-400">{done}/{total} concluídas</span>
                         {lista.grupos.length > 0 && (
@@ -600,6 +973,50 @@ export function Tarefas() {
           </CardContent>
         </Card>
       )}
+
+      {/* New lista/canva dialog */}
+      <Dialog open={newListOpen} onOpenChange={(o) => { if (!o) { setNewListOpen(false); setNewListTitle(''); setNewKind(null) } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Nova entrada</DialogTitle></DialogHeader>
+          {!newKind ? (
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <button onClick={() => setNewKind('lista')}
+                className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-pink-400 hover:bg-pink-50 transition-all group">
+                <div className="w-10 h-10 rounded-xl bg-pink-100 group-hover:bg-pink-200 flex items-center justify-center transition-colors">
+                  <CheckSquare className="w-5 h-5 text-pink-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-900">Lista</span>
+                <span className="text-xs text-gray-500 text-center">Tarefas com checkboxes</span>
+              </button>
+              <button onClick={() => setNewKind('canva')}
+                className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-pink-400 hover:bg-pink-50 transition-all group">
+                <div className="w-10 h-10 rounded-xl bg-pink-100 group-hover:bg-pink-200 flex items-center justify-center transition-colors">
+                  <LayoutGrid className="w-5 h-5 text-pink-600" />
+                </div>
+                <span className="text-sm font-semibold text-gray-900">Canva</span>
+                <span className="text-xs text-gray-500 text-center">Notas visuais em espaço 2D</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm text-gray-500 -mb-1">
+                <button onClick={() => setNewKind(null)} className="text-pink-600 hover:underline">← Voltar</button>
+                <span>•</span>
+                <span>{newKind === 'canva' ? 'Novo canva' : 'Nova lista'}</span>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Título *</Label>
+                <Input value={newListTitle} onChange={(e) => setNewListTitle(e.target.value)} placeholder="Nome" autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleCreateList() }} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setNewListOpen(false); setNewListTitle(''); setNewKind(null) }}>Cancelar</Button>
+            {newKind && <Button onClick={handleCreateList} disabled={!newListTitle.trim()}>Criar</Button>}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
