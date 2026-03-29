@@ -79,6 +79,15 @@ Acompanhe e visualize as associações construídas a partir de [[links internos
 ![pqLAB](./screenshots/07-mapa-exp.png)
 
 
+### 8. Submissões
+
+Gerencie o ciclo de vida dos artigos submetidos a periódicos e congressos em um quadro Kanban com cinco colunas: Purgatório, Resumo ou Draft, Queue, Em Avaliação e Aguardando Publicação. Cada submissão pode ter autores, resumo e um log cronológico de eventos (submissões, rodadas de revisão, aceites e recusas) registrado na forma de uma linha do tempo.
+
+![pqLAB](./screenshots/09-submissoes.png)
+
+![pqLAB](./screenshots/09-submissoes-exp.png)
+
+
 ---
 
 # 🚀 Instalação do pqLAB — Passo a passo
