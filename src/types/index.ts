@@ -237,3 +237,28 @@ export interface ListaSimples {
   created_at: string
   updated_at: string
 }
+
+// ─── Módulo Submissões ────────────────────────────────────────────────────
+
+export interface Submissao {
+  id: string
+  user_id: string
+  titulo_provisorio: string
+  autores?: string[]
+  resumo?: string
+  coluna: string
+  ultima_atividade?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SubmissaoEvento {
+  id: string
+  user_id: string
+  submissao_id: string
+  tipo: string
+  descricao?: string
+  data?: string
+  revista?: string
+  created_at: string
+}

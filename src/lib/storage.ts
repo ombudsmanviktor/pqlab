@@ -31,6 +31,8 @@ import type {
   ListaSimpleItem,
   Revisao,
   Anexo,
+  Submissao,
+  SubmissaoEvento,
 } from '@/types'
 
 // ─── SHA cache ────────────────────────────────────────────────────────────
@@ -325,4 +327,73 @@ export async function saveRevisao(r: Revisao): Promise<void> {
 
 export async function deleteRevisao(id: string): Promise<void> {
   await deleteYaml(`data/revisoes/${id}.yaml`, `Delete revisao ${id}`)
+}
+
+// ─── SUBMISSÕES ───────────────────────────────────────────────────────────
+
+type StoredEvento = {
+  id: string
+  tipo: string
+  descricao?: string
+  data?: string
+  revista?: string
+  created_at: string
+}
+
+type StoredSubmissao = Omit<Submissao, 'user_id'> & {
+  eventos: StoredEvento[]
+}
+
+const GH_USER_SUB = 'github-user'
+
+export async function loadSubmissoes(): Promise<{
+  submissoes: Submissao[]
+  eventos: SubmissaoEvento[]
+}> {
+  const files = await listYamls('data/submissoes')
+  const docs = await Promise.all(files.map((f) => readYaml<StoredSubmissao>(f)))
+
+  const submissoes: Submissao[] = []
+  const eventos: SubmissaoEvento[] = []
+
+  for (const doc of docs) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { eventos: _e, ...rest } = doc
+    submissoes.push({ ...rest, user_id: GH_USER_SUB })
+    for (const e of doc.eventos ?? []) {
+      eventos.push({ ...e, user_id: GH_USER_SUB, submissao_id: doc.id })
+    }
+  }
+
+  return { submissoes, eventos }
+}
+
+export async function saveSubmissaoFile(
+  submissao: Submissao,
+  allEventos: SubmissaoEvento[]
+): Promise<void> {
+  const myEventos = allEventos.filter((e) => e.submissao_id === submissao.id)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { user_id: _u, ...rest } = submissao
+  const doc: StoredSubmissao = {
+    ...rest,
+    updated_at: new Date().toISOString(),
+    eventos: myEventos.map((e) => ({
+      id: e.id,
+      tipo: e.tipo,
+      descricao: e.descricao,
+      data: e.data,
+      revista: e.revista,
+      created_at: e.created_at,
+    })),
+  }
+  await writeYaml(
+    `data/submissoes/${submissao.id}.yaml`,
+    doc,
+    `Update submissao ${submissao.id}`
+  )
+}
+
+export async function deleteSubmissaoFile(id: string): Promise<void> {
+  await deleteYaml(`data/submissoes/${id}.yaml`, `Delete submissao ${id}`)
 }
