@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import jsPDF from 'jspdf'
+import { load as yamlLoad } from 'js-yaml'
 import {
   Document, Paragraph, TextRun, HeadingLevel, Packer,
   Table, TableRow, TableCell, WidthType,
@@ -9,7 +10,8 @@ import {
 import {
   ClipboardCheck, Plus, Edit2, Trash2, Download, FileText,
   ChevronDown, ChevronUp, X, Search,
-  Calendar, Users, BookOpen,
+  Calendar, Users, BookOpen, ArrowUpDown, Upload,
+  CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1243,6 +1245,195 @@ function TypeChooserDialog({
   )
 }
 
+// ─── YAML import helpers ──────────────────────────────────────────────────────
+
+function parseRevisaoYaml(text: string): Revisao | null {
+  try {
+    const obj = yamlLoad(text) as Record<string, unknown>
+    if (!obj || typeof obj !== 'object') return null
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    if (obj.subtype === 'parecer') {
+      if (!obj.titulo || !obj.solicitante) return null
+      return {
+        id,
+        subtype: 'parecer',
+        titulo: String(obj.titulo),
+        autor: obj.autor ? String(obj.autor) : undefined,
+        solicitante: String(obj.solicitante),
+        data: obj.data ? String(obj.data) : now.slice(0, 10),
+        parecer: obj.parecer ? String(obj.parecer) : '',
+        created_at: obj.created_at ? String(obj.created_at) : now,
+        updated_at: now,
+      } satisfies Parecer
+    }
+    if (obj.subtype === 'arguicao') {
+      if (!obj.titulo || !obj.autor) return null
+      return {
+        id,
+        subtype: 'arguicao',
+        titulo: String(obj.titulo),
+        autor: String(obj.autor),
+        instituicao: obj.instituicao ? String(obj.instituicao) : '',
+        orientador: obj.orientador ? String(obj.orientador) : '',
+        bancaMembers: Array.isArray(obj.bancaMembers) ? obj.bancaMembers.map(String) : [],
+        tipoBanca: (obj.tipoBanca as TipoBanca) ?? 'outro',
+        modalidade: (obj.modalidade as ModalidadeBanca) ?? undefined,
+        secoes: Array.isArray(obj.secoes) ? obj.secoes as Arguicao['secoes'] : undefined,
+        comentariosGerais: obj.comentariosGerais ? String(obj.comentariosGerais) : '',
+        questoesTeoricas: obj.questoesTeoricas ? String(obj.questoesTeoricas) : '',
+        questoesMetodologicas: obj.questoesMetodologicas ? String(obj.questoesMetodologicas) : '',
+        comentariosEspecificos: obj.comentariosEspecificos ? String(obj.comentariosEspecificos) : '',
+        conclusoes: obj.conclusoes ? String(obj.conclusoes) : '',
+        anotacaoOutrosMembros: obj.anotacaoOutrosMembros ? String(obj.anotacaoOutrosMembros) : '',
+        data: obj.data ? String(obj.data) : now.slice(0, 10),
+        created_at: obj.created_at ? String(obj.created_at) : now,
+        updated_at: now,
+      } satisfies Arguicao
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+// ─── ImportDialog ─────────────────────────────────────────────────────────────
+
+interface ImportItem { filename: string; revisao: Revisao | null }
+
+function ImportDialog({
+  open, onClose, onImported, isDemoMode, toast,
+}: {
+  open: boolean
+  onClose: () => void
+  onImported: (items: Revisao[]) => void
+  isDemoMode: boolean
+  toast: (opts: { title: string; variant?: 'default' | 'destructive' }) => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [items, setItems] = useState<ImportItem[]>([])
+  const [importing, setImporting] = useState(false)
+
+  const valid = items.filter((i) => i.revisao !== null)
+
+  async function processFiles(files: FileList | File[]) {
+    const arr = Array.from(files).filter((f) => f.name.endsWith('.yaml') || f.name.endsWith('.yml'))
+    if (arr.length === 0) return
+    const parsed: ImportItem[] = await Promise.all(
+      arr.map(async (f) => {
+        const text = await f.text()
+        return { filename: f.name, revisao: parseRevisaoYaml(text) }
+      })
+    )
+    setItems((prev) => {
+      const existing = new Set(prev.map((i) => i.filename))
+      return [...prev, ...parsed.filter((p) => !existing.has(p.filename))]
+    })
+  }
+
+  async function handleImport() {
+    if (valid.length === 0) return
+    setImporting(true)
+    try {
+      if (!isDemoMode) {
+        await Promise.all(valid.map((i) => saveRevisao(i.revisao!)))
+      }
+      onImported(valid.map((i) => i.revisao!))
+      toast({ title: `${valid.length} revisão(ões) importada(s)` })
+      setItems([])
+      onClose()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast({ title: `Erro ao importar: ${msg}`, variant: 'destructive' })
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    processFiles(e.dataTransfer.files)
+  }
+
+  if (!open) return null
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) { setItems([]); onClose() } }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Importar Revisões (YAML)</DialogTitle>
+        </DialogHeader>
+
+        {/* Dropzone */}
+        <div
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={[
+            'border-2 border-dashed rounded-lg p-8 flex flex-col items-center gap-2 cursor-pointer transition-colors',
+            isDragging
+              ? 'border-teal-400 bg-teal-50'
+              : 'border-gray-300 hover:border-teal-400 hover:bg-gray-50',
+          ].join(' ')}
+        >
+          <Upload className="w-8 h-8 text-gray-400" />
+          <p className="text-sm font-medium text-gray-700">Arraste arquivos .yaml aqui</p>
+          <p className="text-xs text-gray-400">ou clique para selecionar</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".yaml,.yml"
+            multiple
+            className="hidden"
+            onChange={(e) => e.target.files && processFiles(e.target.files)}
+          />
+        </div>
+
+        {/* File list */}
+        {items.length > 0 && (
+          <div className="space-y-1.5 max-h-52 overflow-y-auto">
+            {items.map((item, i) => (
+              <div key={i} className="flex items-center gap-2 text-sm px-1">
+                {item.revisao
+                  ? <CheckCircle2 className="w-4 h-4 text-teal-500 flex-shrink-0" />
+                  : <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                }
+                <div className="min-w-0 flex-1">
+                  <span className="truncate block font-medium text-gray-700">{item.filename}</span>
+                  {item.revisao
+                    ? <span className="text-xs text-gray-500 truncate block">
+                        {item.revisao.subtype === 'parecer' ? '📄 Parecer' : '🎓 Arguição'} — {item.revisao.titulo}
+                      </span>
+                    : <span className="text-xs text-red-400">Formato inválido ou campos obrigatórios ausentes</span>
+                  }
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); setItems((prev) => prev.filter((_, j) => j !== i)) }}
+                  className="text-gray-300 hover:text-gray-500 flex-shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" onClick={() => { setItems([]); onClose() }}>Cancelar</Button>
+          <Button
+            onClick={handleImport}
+            disabled={valid.length === 0 || importing}
+            className="bg-teal-600 hover:bg-teal-700 text-white"
+          >
+            {importing ? 'Importando…' : `Importar ${valid.length > 0 ? valid.length : ''} revisão(ões)`}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Main component ─────────────────────────────────────────────────────────
 
 export function Revisoes() {
@@ -1255,7 +1446,9 @@ export function Revisoes() {
   const [editing, setEditing] = useState<Revisao | undefined>()
   const [refFormat, setRefFormat] = useState<RefFormat>('abnt')
   const [filterType, setFilterType] = useState<'all' | 'arguicao' | 'parecer'>('all')
+  const [sortBy, setSortBy] = useState<'data' | 'tipo' | 'titulo' | 'journal'>('data')
   const [search, setSearch] = useState('')
+  const [importOpen, setImportOpen] = useState(false)
 
   useEffect(() => {
     if (isDemoMode) return
@@ -1323,8 +1516,23 @@ export function Revisoes() {
         }
       })
     }
-    return result
-  }, [revisoes, filterType, search])
+    return [...result].sort((a, b) => {
+      switch (sortBy) {
+        case 'data':
+          return (b.data ?? '').localeCompare(a.data ?? '')
+        case 'tipo':
+          return a.subtype.localeCompare(b.subtype)
+        case 'titulo':
+          return a.titulo.localeCompare(b.titulo, 'pt-BR', { sensitivity: 'base' })
+        case 'journal': {
+          const aJ = a.subtype === 'parecer' ? a.solicitante : (a.instituicao ?? '')
+          const bJ = b.subtype === 'parecer' ? b.solicitante : (b.instituicao ?? '')
+          return aJ.localeCompare(bJ, 'pt-BR', { sensitivity: 'base' })
+        }
+        default: return 0
+      }
+    })
+  }, [revisoes, filterType, search, sortBy])
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Carregando…</div>
 
@@ -1354,13 +1562,26 @@ export function Revisoes() {
               </button>
             )}
           </div>
-          {/* Filter */}
+          {/* Filter by type */}
           <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
             <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas</SelectItem>
               <SelectItem value="arguicao">Arguições</SelectItem>
               <SelectItem value="parecer">Pareceres</SelectItem>
+            </SelectContent>
+          </Select>
+          {/* Sort */}
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+            <SelectTrigger className="h-8 text-xs w-36 gap-1">
+              <ArrowUpDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="data">Data</SelectItem>
+              <SelectItem value="tipo">Tipo</SelectItem>
+              <SelectItem value="titulo">Título</SelectItem>
+              <SelectItem value="journal">Journal / Inst.</SelectItem>
             </SelectContent>
           </Select>
           {/* Ref format (only relevant for arguições) */}
@@ -1378,6 +1599,12 @@ export function Revisoes() {
               <Download className="w-3.5 h-3.5" /> CSV
             </Button>
           )}
+          {/* Import YAML */}
+          {!isDemoMode && (
+            <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="h-8 text-xs gap-1.5">
+              <Upload className="w-3.5 h-3.5" /> Importar
+            </Button>
+          )}
           <Button size="sm" onClick={() => setChooserOpen(true)} className="bg-teal-600 hover:bg-teal-700 text-white gap-1">
             <Plus className="w-4 h-4" /> Nova Revisão
           </Button>
@@ -1389,6 +1616,20 @@ export function Revisoes() {
         open={chooserOpen}
         onChoose={openNew}
         onClose={() => setChooserOpen(false)}
+      />
+
+      {/* Import YAML dialog */}
+      <ImportDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        isDemoMode={isDemoMode}
+        toast={toast}
+        onImported={(imported) => {
+          setRevisoes((prev) => {
+            const ids = new Set(prev.map((r) => r.id))
+            return [...imported.filter((r) => !ids.has(r.id)), ...prev]
+          })
+        }}
       />
 
       {/* Form dialogs */}
