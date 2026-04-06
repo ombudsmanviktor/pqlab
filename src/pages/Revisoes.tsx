@@ -10,7 +10,7 @@ import {
 import {
   ClipboardCheck, Plus, Edit2, Trash2, Download, FileText,
   ChevronDown, ChevronUp, X, Search,
-  Calendar, Users, BookOpen, ArrowUpDown, Upload,
+  Calendar, Users, BookOpen, ArrowUpDown, ArrowUp, ArrowDown, Upload,
   CheckCircle2, AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -1447,6 +1447,7 @@ export function Revisoes() {
   const [refFormat, setRefFormat] = useState<RefFormat>('abnt')
   const [filterType, setFilterType] = useState<'all' | 'arguicao' | 'parecer'>('all')
   const [sortBy, setSortBy] = useState<'data' | 'tipo' | 'titulo' | 'journal'>('data')
+  const [sortAsc, setSortAsc] = useState(false)
   const [search, setSearch] = useState('')
   const [importOpen, setImportOpen] = useState(false)
 
@@ -1516,23 +1517,24 @@ export function Revisoes() {
         }
       })
     }
+    const dir = sortAsc ? 1 : -1
     return [...result].sort((a, b) => {
       switch (sortBy) {
         case 'data':
-          return (b.data ?? '').localeCompare(a.data ?? '')
+          return dir * (a.data ?? '').localeCompare(b.data ?? '')
         case 'tipo':
-          return a.subtype.localeCompare(b.subtype)
+          return dir * a.subtype.localeCompare(b.subtype)
         case 'titulo':
-          return a.titulo.localeCompare(b.titulo, 'pt-BR', { sensitivity: 'base' })
+          return dir * a.titulo.localeCompare(b.titulo, 'pt-BR', { sensitivity: 'base' })
         case 'journal': {
           const aJ = a.subtype === 'parecer' ? a.solicitante : (a.instituicao ?? '')
           const bJ = b.subtype === 'parecer' ? b.solicitante : (b.instituicao ?? '')
-          return aJ.localeCompare(bJ, 'pt-BR', { sensitivity: 'base' })
+          return dir * aJ.localeCompare(bJ, 'pt-BR', { sensitivity: 'base' })
         }
         default: return 0
       }
     })
-  }, [revisoes, filterType, search, sortBy])
+  }, [revisoes, filterType, search, sortBy, sortAsc])
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400">Carregando…</div>
 
@@ -1572,18 +1574,30 @@ export function Revisoes() {
             </SelectContent>
           </Select>
           {/* Sort */}
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
-            <SelectTrigger className="h-8 text-xs w-36 gap-1">
-              <ArrowUpDown className="w-3 h-3 opacity-50 flex-shrink-0" />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="data">Data</SelectItem>
-              <SelectItem value="tipo">Tipo</SelectItem>
-              <SelectItem value="titulo">Título</SelectItem>
-              <SelectItem value="journal">Journal / Inst.</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-0">
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+              <SelectTrigger className="h-8 text-xs w-36 gap-1 rounded-r-none border-r-0">
+                <ArrowUpDown className="w-3 h-3 opacity-50 flex-shrink-0" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="data">Data</SelectItem>
+                <SelectItem value="tipo">Tipo</SelectItem>
+                <SelectItem value="titulo">Título</SelectItem>
+                <SelectItem value="journal">Journal / Inst.</SelectItem>
+              </SelectContent>
+            </Select>
+            <button
+              onClick={() => setSortAsc((v) => !v)}
+              title={sortAsc ? 'Crescente' : 'Decrescente'}
+              className="h-8 w-8 flex items-center justify-center border border-input rounded-r-md bg-background hover:bg-accent hover:text-accent-foreground transition-colors flex-shrink-0"
+            >
+              {sortAsc
+                ? <ArrowUp className="w-3.5 h-3.5 text-teal-600" />
+                : <ArrowDown className="w-3.5 h-3.5 text-teal-600" />
+              }
+            </button>
+          </div>
           {/* Ref format (only relevant for arguições) */}
           <Select value={refFormat} onValueChange={(v) => setRefFormat(v as RefFormat)}>
             <SelectTrigger className="h-8 text-xs w-24"><SelectValue /></SelectTrigger>
