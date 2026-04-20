@@ -1061,14 +1061,16 @@ function ArguicaoCard({
                           <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => removeSecao(idx)}
-                        className="ml-auto text-gray-300 hover:text-red-400 transition-colors"
-                        title="Remover seção"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+                      {editingLabelIdx === idx && (
+                        <button
+                          type="button"
+                          onClick={() => removeSecao(idx)}
+                          className="ml-auto text-red-300 hover:text-red-500 transition-colors"
+                          title="Remover seção"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                     <InlineMarkdownField
                       value={secao.content}

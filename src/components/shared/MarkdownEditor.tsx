@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import {
   Bold, Italic, Strikethrough, Link2, Image, Code, List, ListOrdered,
   Heading1, Heading2, Heading3, Quote, Minus, Eye, Edit3, Hash,
@@ -364,15 +365,68 @@ const inlineHeadingComponents = {
   h3: makeInlineHeading(3),
 }
 
-// WikiMarkdown variant with heading # hover support
+// ─── Inline text highlights — page pills & numbered topic pills ────────────────
+
+// Matches: p. 90 | pp. 90 | pp. 90-92 | pp. 90–92 | p.90 etc.
+const PAGE_PILL_RE = /\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b/g
+// Matches: (1) (2) (14) etc.
+const NUM_PILL_RE = /\(\d+\)/g
+// Combined split regex
+const HIGHLIGHT_SPLIT_RE = /(\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b|\(\d+\))/g
+
+function highlightInlineText(text: string): React.ReactNode {
+  const parts = text.split(HIGHLIGHT_SPLIT_RE)
+  if (parts.length === 1) return text  // fast path — no match
+  return parts.map((part, i) => {
+    if (!part) return null
+    // Page reference pill
+    PAGE_PILL_RE.lastIndex = 0
+    if (PAGE_PILL_RE.test(part)) {
+      return (
+        <span
+          key={i}
+          className="inline-flex items-center px-1.5 py-0 rounded text-xs font-mono bg-teal-50 border border-teal-200 text-teal-700 mx-0.5 select-none whitespace-nowrap"
+        >
+          {part}
+        </span>
+      )
+    }
+    // Numbered topic pill — (1), (2), etc.
+    NUM_PILL_RE.lastIndex = 0
+    if (NUM_PILL_RE.test(part)) {
+      return (
+        <span
+          key={i}
+          className="inline-flex items-center justify-center w-[1.3em] h-[1.3em] rounded-full text-xs font-semibold bg-gray-100 border border-gray-300 text-gray-700 mx-0.5 select-none"
+        >
+          {part.slice(1, -1)}
+        </span>
+      )
+    }
+    return part
+  })
+}
+
+// Recursively applies inline highlights to ReactMarkdown children
+function applyHighlights(children: React.ReactNode): React.ReactNode {
+  if (typeof children === 'string') return highlightInlineText(children)
+  if (Array.isArray(children)) return children.map((c, i) =>
+    typeof c === 'string' ? <span key={i}>{highlightInlineText(c)}</span> : c
+  )
+  return children
+}
+
+// WikiMarkdown variant with heading hover and inline highlights
 function InlineWikiMarkdown({ content }: { content: string }) {
   const { navigate } = useWikiLinks()
   const processed = processWikiLinks(content)
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
+      remarkPlugins={[remarkGfm, remarkBreaks]}
       components={{
         ...inlineHeadingComponents,
+        p: ({ children }) => <p>{applyHighlights(children)}</p>,
+        li: ({ children }) => <li>{applyHighlights(children)}</li>,
         a: ({ href, children, ...props }) => {
           if (href?.startsWith('wikilink:')) {
             const title = decodeURIComponent(href.slice('wikilink:'.length))
@@ -400,14 +454,19 @@ function InlineWikiMarkdown({ content }: { content: string }) {
 export function InlineMarkdownRenderer({ content, className }: { content: string; className?: string }) {
   if (!content) return null
   return (
-    <div className={cn('prose prose-sm max-w-none pl-5 dark:prose-invert text-gray-800 leading-relaxed', className)}>
+    <div className={cn(
+      'prose prose-sm max-w-none pl-5 dark:prose-invert text-gray-800 leading-relaxed',
+      '[&_p]:my-2 [&_p+p]:mt-3',  // generous paragraph spacing
+      className
+    )}>
       <InlineWikiMarkdown content={content} />
     </div>
   )
 }
 
-// Shared toolbar used by InlineMarkdownField
+// ─── Inline toolbar ─────────────────────────────────────────────────────────
 // onMouseDown + preventDefault keeps the textarea focused while clicking buttons
+
 function InlineMdToolbar({
   value,
   onChange,
@@ -426,10 +485,10 @@ function InlineMdToolbar({
     [value, onChange, textareaRef]
   )
   return (
-    <div className="flex items-center gap-0.5 flex-wrap px-1.5 py-1 border-b border-gray-200 bg-gray-50">
+    <div className="flex items-center gap-0.5 flex-wrap px-1 py-0.5 border-b border-gray-100 bg-white/80">
       {toolbarActions.map((item, i) =>
         item === 'sep' ? (
-          <div key={i} className="w-px h-4 bg-gray-200 mx-0.5" />
+          <div key={i} className="w-px h-3.5 bg-gray-200 mx-0.5" />
         ) : (
           <button
             key={item.title}
@@ -439,7 +498,7 @@ function InlineMdToolbar({
               e.preventDefault() // keep textarea focused
               handleAction(item.action)
             }}
-            className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-800 transition-colors"
+            className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
           >
             <item.icon className="w-3 h-3" />
           </button>
@@ -449,9 +508,12 @@ function InlineMdToolbar({
   )
 }
 
-// Click-to-edit inline markdown field with WYSIWYG toolbar
-// View mode: renders Markdown with heading # hover markers
-// Edit mode: auto-growing textarea + toolbar; blur → back to view mode
+// ─── InlineMarkdownField ─────────────────────────────────────────────────────
+// Click anywhere on the rendered text to edit it directly — no visible "box".
+// Single newlines → line breaks; double newlines → paragraph breaks.
+// Typing -> or <- immediately converts to → / ←; Backspace restores the two chars.
+// Page refs (p. 90 / pp. 90-92) and topic numbers (1) appear as pills in view mode.
+
 export interface InlineMarkdownFieldProps {
   value: string
   onChange: (value: string) => void
@@ -476,7 +538,7 @@ export function InlineMarkdownField({
     if (!isEditing) setDraft(value)
   }, [value, isEditing])
 
-  // Auto-resize textarea
+  // Auto-resize textarea on every draft change
   useLayoutEffect(() => {
     if (isEditing && textareaRef.current) {
       const ta = textareaRef.current
@@ -496,6 +558,49 @@ export function InlineMarkdownField({
     if (draft !== value) onChange(draft)
   }
 
+  // Auto-replace -> with → and <- with ← as the user types
+  function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value
+    const pos = e.target.selectionStart
+    if (pos >= 2) {
+      const tail = val.slice(pos - 2, pos)
+      let arrow: string | null = null
+      if (tail === '->') arrow = '→'
+      if (tail === '<-') arrow = '←'
+      if (arrow) {
+        const next = val.slice(0, pos - 2) + arrow + val.slice(pos)
+        setDraft(next)
+        requestAnimationFrame(() => {
+          textareaRef.current?.setSelectionRange(pos - 1, pos - 1)
+        })
+        return
+      }
+    }
+    setDraft(val)
+  }
+
+  // Backspace on → restores ->; Backspace on ← restores <-
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key !== 'Backspace') return
+    const ta = textareaRef.current
+    if (!ta) return
+    const { selectionStart: pos, selectionEnd: end } = ta
+    if (pos !== end || pos === 0) return  // selection or start-of-field — default behaviour
+    const prev = draft[pos - 1]
+    if (prev === '→') {
+      e.preventDefault()
+      const next = draft.slice(0, pos - 1) + '->' + draft.slice(pos)
+      setDraft(next)
+      requestAnimationFrame(() => ta.setSelectionRange(pos + 1, pos + 1))
+    } else if (prev === '←') {
+      e.preventDefault()
+      const next = draft.slice(0, pos - 1) + '<-' + draft.slice(pos)
+      setDraft(next)
+      requestAnimationFrame(() => ta.setSelectionRange(pos + 1, pos + 1))
+    }
+  }
+
+  // ── View mode ──────────────────────────────────────────────────────────────
   if (!isEditing) {
     return (
       <div
@@ -509,23 +614,32 @@ export function InlineMarkdownField({
         {value.trim() ? (
           <InlineMarkdownRenderer content={value} />
         ) : !readOnly ? (
-          <p className="text-gray-400 text-sm italic px-2 py-1.5">{placeholder}</p>
+          <p className="text-gray-400 text-sm italic pl-5 py-1">{placeholder}</p>
         ) : null}
       </div>
     )
   }
 
+  // ── Edit mode — seamless, no box ───────────────────────────────────────────
+  // A thin teal left-border signals "editing" without an obtrusive box.
+  // The toolbar is minimal and sits just above the text.
   return (
-    <div className={cn('rounded-md border border-teal-300 bg-white overflow-hidden shadow-sm', className)}>
+    <div className={cn('border-l-2 border-teal-400 pl-1 rounded-sm', className)}>
       <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
       <textarea
         ref={textareaRef}
         value={draft}
-        onChange={(e) => setDraft(e.target.value)}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
         onBlur={handleBlur}
         autoFocus
         placeholder={placeholder}
-        className="w-full resize-none p-3 text-sm font-mono text-gray-900 focus:outline-none leading-relaxed bg-white min-h-[5rem]"
+        className={cn(
+          'w-full resize-none pl-4 pr-2 py-1',
+          'text-sm font-sans text-gray-800 leading-relaxed',
+          'bg-transparent border-0 outline-none ring-0 focus:ring-0',
+          'min-h-[2rem] placeholder:text-gray-400 placeholder:italic',
+        )}
         style={{ overflow: 'hidden' }}
       />
     </div>
