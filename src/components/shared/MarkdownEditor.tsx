@@ -465,7 +465,8 @@ export function InlineMarkdownRenderer({ content, className }: { content: string
 }
 
 // ─── Inline toolbar ─────────────────────────────────────────────────────────
-// onMouseDown + preventDefault keeps the textarea focused while clicking buttons
+// Renders as a floating pill — absolutely positioned so it never affects layout.
+// onMouseDown + preventDefault on every button + the wrapper keeps textarea focused.
 
 function InlineMdToolbar({
   value,
@@ -485,7 +486,12 @@ function InlineMdToolbar({
     [value, onChange, textareaRef]
   )
   return (
-    <div className="flex items-center gap-0.5 flex-wrap px-1 py-0.5 border-b border-gray-100 bg-white/80">
+    // position: absolute — caller places this div; it takes zero layout space.
+    // onMouseDown on the wrapper catches clicks on padding between buttons.
+    <div
+      className="flex items-center gap-0.5 flex-wrap px-1 py-0.5 bg-white border border-gray-200 rounded-lg shadow-md"
+      onMouseDown={(e) => e.preventDefault()}
+    >
       {toolbarActions.map((item, i) =>
         item === 'sep' ? (
           <div key={i} className="w-px h-3.5 bg-gray-200 mx-0.5" />
@@ -509,9 +515,9 @@ function InlineMdToolbar({
 }
 
 // ─── InlineMarkdownField ─────────────────────────────────────────────────────
-// Click anywhere on the rendered text to edit it directly — no visible "box".
-// Single newlines → line breaks; double newlines → paragraph breaks.
-// Typing -> or <- immediately converts to → / ←; Backspace restores the two chars.
+// Click anywhere on the rendered text → edit directly with zero layout shift.
+// The toolbar floats above the field via position:absolute, taking no space.
+// Typing -> / <- converts to → / ←; Backspace restores the original two chars.
 // Page refs (p. 90 / pp. 90-92) and topic numbers (1) appear as pills in view mode.
 
 export interface InlineMarkdownFieldProps {
@@ -532,6 +538,7 @@ export function InlineMarkdownField({
   const [isEditing, setIsEditing] = useState(false)
   const [draft, setDraft] = useState(value)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
 
   // Sync draft when value changes externally (e.g. parent reloads data)
   useEffect(() => {
@@ -553,7 +560,9 @@ export function InlineMarkdownField({
     setIsEditing(true)
   }
 
-  function handleBlur() {
+  // Only leave edit mode when focus moves outside both the textarea AND the toolbar
+  function handleBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
+    if (containerRef.current?.contains(e.relatedTarget as Node)) return
     setIsEditing(false)
     if (draft !== value) onChange(draft)
   }
@@ -606,8 +615,8 @@ export function InlineMarkdownField({
       <div
         onClick={enterEdit}
         className={cn(
-          'rounded-md transition-colors min-h-[2rem]',
-          readOnly ? 'cursor-default' : 'cursor-text hover:bg-gray-50/80',
+          'min-h-[2rem]',
+          readOnly ? 'cursor-default' : 'cursor-text',
           className
         )}
       >
@@ -620,12 +629,20 @@ export function InlineMarkdownField({
     )
   }
 
-  // ── Edit mode — seamless, no box ───────────────────────────────────────────
-  // A thin teal left-border signals "editing" without an obtrusive box.
-  // The toolbar is minimal and sits just above the text.
+  // ── Edit mode — truly seamless ─────────────────────────────────────────────
+  // The toolbar uses position:absolute with bottom:100% so it floats ABOVE the
+  // field without adding any height to the container → zero layout shift.
+  // The textarea is styled identically to the rendered prose view:
+  //   same font-sans, same pl-5, same text-sm leading-relaxed, bg-transparent.
   return (
-    <div className={cn('border-l-2 border-teal-400 pl-1 rounded-sm', className)}>
-      <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
+    <div ref={containerRef} className={cn('relative', className)}>
+      {/* Floating toolbar — above the field, outside normal flow (no layout shift) */}
+      <div
+        className="absolute right-0 z-20"
+        style={{ bottom: '100%', marginBottom: '4px' }}
+      >
+        <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
+      </div>
       <textarea
         ref={textareaRef}
         value={draft}
@@ -635,7 +652,8 @@ export function InlineMarkdownField({
         autoFocus
         placeholder={placeholder}
         className={cn(
-          'w-full resize-none pl-4 pr-2 py-1',
+          'w-full resize-none',
+          'pl-5 pr-2 py-0',
           'text-sm font-sans text-gray-800 leading-relaxed',
           'bg-transparent border-0 outline-none ring-0 focus:ring-0',
           'min-h-[2rem] placeholder:text-gray-400 placeholder:italic',
