@@ -539,25 +539,30 @@ export function InlineMarkdownField({
   const [draft, setDraft] = useState(value)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  // Captures click position for cursor placement on edit entry
+  const viewRef = useRef<HTMLDivElement>(null)
   const clickCoordsRef = useRef<{ x: number; y: number } | null>(null)
   const justEnteredEdit = useRef(false)
 
-  // Sync draft when value changes externally (e.g. parent reloads data)
+  // Sync draft when value changes externally
   useEffect(() => {
     if (!isEditing) setDraft(value)
   }, [value, isEditing])
 
-  // Auto-resize on every draft change
+  // If the raw textarea content is taller than the rendered prose,
+  // expand the hidden view div so the container stays tall enough.
   useLayoutEffect(() => {
-    if (!isEditing || !textareaRef.current) return
+    if (!isEditing || !textareaRef.current || !viewRef.current) return
     const ta = textareaRef.current
-    ta.style.height = 'auto'
-    ta.style.height = ta.scrollHeight + 'px'
+    const view = viewRef.current
+    if (ta.scrollHeight > view.offsetHeight) {
+      view.style.minHeight = ta.scrollHeight + 'px'
+    } else {
+      view.style.minHeight = ''
+    }
   }, [isEditing, draft])
 
-  // On first render in edit mode: focus WITHOUT scroll + place cursor at click position.
-  // Everything here runs synchronously before the browser paints → zero visible jump.
+  // On first render in edit mode: focus without scroll + place cursor at click position.
+  // Runs synchronously before paint so the user never sees cursor at position 0.
   useLayoutEffect(() => {
     if (!isEditing || !justEnteredEdit.current || !textareaRef.current) return
     justEnteredEdit.current = false
@@ -565,14 +570,8 @@ export function InlineMarkdownField({
     const coords = clickCoordsRef.current
     clickCoordsRef.current = null
 
-    // Resize first so getBoundingClientRect() returns the final geometry
-    ta.style.height = 'auto'
-    ta.style.height = ta.scrollHeight + 'px'
-
-    // Focus without scrolling (prevents the page from jumping to position 0)
     ta.focus({ preventScroll: true })
 
-    // Estimate which line/offset the user clicked and place cursor there
     let offset = ta.value.length  // fallback: end of text
     if (coords) {
       const taRect = ta.getBoundingClientRect()
@@ -584,7 +583,7 @@ export function InlineMarkdownField({
       const lines = ta.value.split('\n')
       let lineOffset = 0
       for (let i = 0; i < Math.min(lineIndex, lines.length - 1); i++) {
-        lineOffset += lines[i].length + 1  // +1 for \n
+        lineOffset += lines[i].length + 1
       }
       offset = lineOffset + (lines[Math.min(lineIndex, lines.length - 1)] ?? '').length
     }
@@ -599,14 +598,12 @@ export function InlineMarkdownField({
     setIsEditing(true)
   }
 
-  // Only leave edit mode when focus moves outside both the textarea AND the toolbar
   function handleBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
     if (containerRef.current?.contains(e.relatedTarget as Node)) return
     setIsEditing(false)
     if (draft !== value) onChange(draft)
   }
 
-  // Auto-replace -> with → and <- with ← as the user types
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value
     const pos = e.target.selectionStart
@@ -618,22 +615,19 @@ export function InlineMarkdownField({
       if (arrow) {
         const next = val.slice(0, pos - 2) + arrow + val.slice(pos)
         setDraft(next)
-        requestAnimationFrame(() => {
-          textareaRef.current?.setSelectionRange(pos - 1, pos - 1)
-        })
+        requestAnimationFrame(() => textareaRef.current?.setSelectionRange(pos - 1, pos - 1))
         return
       }
     }
     setDraft(val)
   }
 
-  // Backspace on → restores ->; Backspace on ← restores <-
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key !== 'Backspace') return
     const ta = textareaRef.current
     if (!ta) return
     const { selectionStart: pos, selectionEnd: end } = ta
-    if (pos !== end || pos === 0) return  // selection or start-of-field — default behaviour
+    if (pos !== end || pos === 0) return
     const prev = draft[pos - 1]
     if (prev === '→') {
       e.preventDefault()
@@ -648,50 +642,56 @@ export function InlineMarkdownField({
     }
   }
 
-  // ── View mode ──────────────────────────────────────────────────────────────
-  if (!isEditing) {
-    return (
+  // ── Render ─────────────────────────────────────────────────────────────────
+  // Both the rendered view AND the textarea are always in the DOM.
+  // The rendered view (viewRef) is ALWAYS in the document flow — it provides
+  // the container's height at all times, preventing any layout shift.
+  // During editing: the view is invisible (visibility:hidden) and the textarea
+  // is absolutely positioned on top of it, pixel-aligned.
+  // Zero layout shift on entry or exit from editing.
+  return (
+    <div ref={containerRef} className={cn('relative', className)}>
+      {/* Rendered view — always in layout flow, determines container height */}
       <div
-        onClick={enterEdit}
+        ref={viewRef}
+        onClick={!isEditing ? enterEdit : undefined}
         className={cn(
           'min-h-[2rem]',
-          readOnly ? 'cursor-default' : 'cursor-text',
-          className
+          !readOnly && !isEditing && 'cursor-text',
+          // visibility:hidden keeps the element in layout (preserves height)
+          // but makes it invisible; pointer-events:none so clicks go to textarea
+          isEditing && 'invisible pointer-events-none select-none',
         )}
       >
-        {value.trim() ? (
-          <InlineMarkdownRenderer content={value} />
+        {/* Show draft during editing so height tracks live content */}
+        {(isEditing ? draft : value).trim() ? (
+          <InlineMarkdownRenderer content={isEditing ? draft : value} />
         ) : !readOnly ? (
           <p className="text-gray-400 text-sm italic pl-5 py-1">{placeholder}</p>
         ) : null}
       </div>
-    )
-  }
 
-  // ── Edit mode — truly seamless ─────────────────────────────────────────────
-  // The toolbar uses position:absolute with bottom:100% so it floats ABOVE the
-  // field without adding any height to the container → zero layout shift.
-  // The textarea is styled identically to the rendered prose view:
-  //   same font-sans, same pl-5, same text-sm leading-relaxed, bg-transparent.
-  return (
-    <div ref={containerRef} className={cn('relative', className)}>
-      {/* Floating toolbar — above the field, outside normal flow (no layout shift) */}
-      <div
-        className="absolute right-0 z-20"
-        style={{ bottom: '100%', marginBottom: '4px' }}
-      >
-        <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
-      </div>
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        placeholder={placeholder}
-        className="w-full resize-none pl-5 pr-2 py-0 bg-transparent border-0 outline-none ring-0 focus:ring-0 min-h-[2rem] placeholder:text-gray-400 placeholder:italic"
-        style={{ overflow: 'hidden', font: 'inherit', color: 'inherit', lineHeight: 'inherit' }}
-      />
+      {/* Textarea — absolutely overlaid on the rendered view, zero layout impact */}
+      {isEditing && !readOnly && (
+        <>
+          <div
+            className="absolute right-0 z-20"
+            style={{ bottom: '100%', marginBottom: '4px' }}
+          >
+            <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onBlur={handleBlur}
+            placeholder={placeholder}
+            className="absolute inset-0 resize-none bg-transparent border-0 outline-none ring-0 focus:ring-0 w-full pl-5 pr-2 py-0 placeholder:text-gray-400 placeholder:italic"
+            style={{ font: 'inherit', color: 'inherit', lineHeight: 'inherit', overflow: 'hidden' }}
+          />
+        </>
+      )}
     </div>
   )
 }
