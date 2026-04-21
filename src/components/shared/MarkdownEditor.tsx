@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useLayoutEffect } from 'react'
+import { useState, useRef, useCallback, useEffect, useLayoutEffect, Fragment } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import remarkBreaks from 'remark-breaks'
@@ -517,10 +517,180 @@ function InlineMdToolbar({
 }
 
 // ─── InlineMarkdownField ─────────────────────────────────────────────────────
-// Click anywhere on the rendered text → edit directly with zero layout shift.
-// The toolbar floats above the field via position:absolute, taking no space.
-// Typing -> / <- converts to → / ←; Backspace restores the original two chars.
-// Page refs (p. 90 / pp. 90-92) and topic numbers (1) appear as pills in view mode.
+// Bear / Ulysses-style seamless inline editor.
+//
+// Architecture:
+//   ┌─ container (position: relative) ────────────────────────────────────────┐
+//   │  ┌─ overlay (position: absolute; inset:0; z-index:0) ─────────────────┐ │
+//   │  │  syntax-highlighted markdown, pointer-events:none                  │ │
+//   │  └────────────────────────────────────────────────────────────────────┘ │
+//   │  ┌─ textarea (position: relative; z-index:1) ─────────────────────────┐ │
+//   │  │  transparent text (color:transparent) + visible caret              │ │
+//   │  │  determines container height via scrollHeight auto-resize          │ │
+//   │  └────────────────────────────────────────────────────────────────────┘ │
+//   └─────────────────────────────────────────────────────────────────────────┘
+//
+// — The textarea is ALWAYS in the DOM (no mode switching, no DOM swapping).
+// — The browser places the cursor naturally at the exact click position.
+// — Zero layout shift: the textarea is always the layout element.
+// — The overlay renders syntax-highlighted markdown through the transparent textarea.
+
+// Split regex for inline patterns — bold before italic so ** wins over *
+const INLINE_SPLIT_RE = /(\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|\*[^*\n]+?\*|`[^`\n]+?`|\[\[[^\]\n]+?\]\]|\[[^\]\n]+?\]\([^)\n]+?\)|\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b|\(\d+\))/g
+
+function syntaxSpan(part: string, key: number | string): React.ReactNode {
+  // **bold**
+  if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+    const inner = part.slice(2, -2)
+    return (
+      <span key={key}>
+        <span className="text-gray-300">**</span>
+        <span className="font-semibold">{inner}</span>
+        <span className="text-gray-300">**</span>
+      </span>
+    )
+  }
+  // ~~strikethrough~~
+  if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
+    const inner = part.slice(2, -2)
+    return (
+      <span key={key}>
+        <span className="text-gray-300">~~</span>
+        <span className="line-through text-gray-400">{inner}</span>
+        <span className="text-gray-300">~~</span>
+      </span>
+    )
+  }
+  // *italic* (not bold — starts with single *)
+  if (part.startsWith('*') && !part.startsWith('**') && part.endsWith('*') && part.length > 2) {
+    const inner = part.slice(1, -1)
+    return (
+      <span key={key}>
+        <span className="text-gray-300">*</span>
+        <span className="italic">{inner}</span>
+        <span className="text-gray-300">*</span>
+      </span>
+    )
+  }
+  // `code`
+  if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
+    return (
+      <span key={key} className="rounded bg-gray-100 px-0.5 font-mono text-xs text-gray-700">
+        {part}
+      </span>
+    )
+  }
+  // [[wiki link]]
+  if (part.startsWith('[[') && part.endsWith(']]')) {
+    const title = part.slice(2, -2)
+    return (
+      <span key={key} className="inline-flex items-center gap-0.5 rounded border border-orange-200 bg-orange-50 px-1 text-xs font-medium text-orange-700">
+        <span className="text-orange-400">#</span>{title}
+      </span>
+    )
+  }
+  // [text](url)
+  if (part.startsWith('[') && part.includes('](')) {
+    return <span key={key} className="text-blue-600 underline">{part}</span>
+  }
+  // Page ref: p. 90, pp. 90-92
+  PAGE_PILL_RE.lastIndex = 0
+  if (PAGE_PILL_RE.test(part)) {
+    return (
+      <span key={key} className="inline-flex items-center rounded border border-teal-200 bg-teal-50 px-1.5 font-mono text-xs text-teal-700 whitespace-nowrap">
+        {part}
+      </span>
+    )
+  }
+  // Topic number: (1) (2) …
+  if (/^\(\d+\)$/.test(part)) {
+    return (
+      <span key={key} className="inline-flex h-[1.3em] w-[1.3em] items-center justify-center rounded-full border border-gray-300 bg-gray-100 text-xs font-semibold text-gray-700">
+        {part.slice(1, -1)}
+      </span>
+    )
+  }
+  return part
+}
+
+function syntaxLine(line: string, lineKey: number): React.ReactNode {
+  // Horizontal rule: ---, ***, ___
+  if (/^[-*_]{3,}$/.test(line.trim()) && line.trim().length >= 3) {
+    return <span key={lineKey} className="text-gray-300">{line}</span>
+  }
+  // Heading: # / ## / ###  (same font-size, different weight — preserves cursor alignment)
+  const hMatch = line.match(/^(#{1,3}) (.+)$/)
+  if (hMatch) {
+    const level = hMatch[1].length
+    const wt = level === 1 ? 'font-bold' : level === 2 ? 'font-semibold' : 'font-medium'
+    const parts = hMatch[2].split(INLINE_SPLIT_RE).filter(Boolean)
+    return (
+      <span key={lineKey} className={cn(wt, 'text-gray-900')}>
+        <span className="font-normal text-gray-300">{hMatch[1]} </span>
+        {parts.map((p, i) => syntaxSpan(p, `${lineKey}-${i}`))}
+      </span>
+    )
+  }
+  // Blockquote: > text
+  if (line.startsWith('> ')) {
+    const inner = line.slice(2)
+    const parts = inner.split(INLINE_SPLIT_RE).filter(Boolean)
+    return (
+      <span key={lineKey} className="italic text-gray-500">
+        <span className="not-italic text-gray-300">{'> '}</span>
+        {parts.map((p, i) => syntaxSpan(p, `${lineKey}-${i}`))}
+      </span>
+    )
+  }
+  // Bullet list: - item / * item
+  const bMatch = line.match(/^(\s*)([-*]) (.*)$/)
+  if (bMatch) {
+    const parts = bMatch[3].split(INLINE_SPLIT_RE).filter(Boolean)
+    return (
+      <span key={lineKey}>
+        {bMatch[1]}
+        <span className="text-gray-400">{bMatch[2]} </span>
+        {parts.map((p, i) => syntaxSpan(p, `${lineKey}-${i}`))}
+      </span>
+    )
+  }
+  // Numbered list: 1. item
+  const nMatch = line.match(/^(\d+)\. (.*)$/)
+  if (nMatch) {
+    const parts = nMatch[2].split(INLINE_SPLIT_RE).filter(Boolean)
+    return (
+      <span key={lineKey}>
+        <span className="text-gray-400">{nMatch[1]}. </span>
+        {parts.map((p, i) => syntaxSpan(p, `${lineKey}-${i}`))}
+      </span>
+    )
+  }
+  // Regular text
+  const parts = line.split(INLINE_SPLIT_RE).filter(Boolean)
+  return (
+    <span key={lineKey}>
+      {parts.length > 0
+        ? parts.map((p, i) => syntaxSpan(p, `${lineKey}-${i}`))
+        : '\u200B'  // zero-width space keeps empty lines at full line-height
+      }
+    </span>
+  )
+}
+
+function syntaxHighlight(text: string): React.ReactNode {
+  if (!text) return null
+  const lines = text.split('\n')
+  return (
+    <>
+      {lines.map((line, i) => (
+        <Fragment key={i}>
+          {syntaxLine(line, i)}
+          {i < lines.length - 1 ? '\n' : null}
+        </Fragment>
+      ))}
+    </>
+  )
+}
 
 export interface InlineMarkdownFieldProps {
   value: string
@@ -537,78 +707,35 @@ export function InlineMarkdownField({
   className,
   readOnly = false,
 }: InlineMarkdownFieldProps) {
-  const [isEditing, setIsEditing] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
   const [draft, setDraft] = useState(value)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const viewRef = useRef<HTMLDivElement>(null)
-  const clickCoordsRef = useRef<{ x: number; y: number } | null>(null)
-  const justEnteredEdit = useRef(false)
 
-  // Sync draft when value changes externally
+  // Sync draft when value changes externally (not while user is typing)
   useEffect(() => {
-    if (!isEditing) setDraft(value)
-  }, [value, isEditing])
+    if (!isFocused) setDraft(value)
+  }, [value, isFocused])
 
-  // If the raw textarea content is taller than the rendered prose,
-  // expand the hidden view div so the container stays tall enough.
+  // Auto-resize: textarea grows to fit content — this drives container height
   useLayoutEffect(() => {
-    if (!isEditing || !textareaRef.current || !viewRef.current) return
     const ta = textareaRef.current
-    const view = viewRef.current
-    if (ta.scrollHeight > view.offsetHeight) {
-      view.style.minHeight = ta.scrollHeight + 'px'
-    } else {
-      view.style.minHeight = ''
-    }
-  }, [isEditing, draft])
-
-  // On first render in edit mode: focus without scroll + place cursor at click position.
-  // Runs synchronously before paint so the user never sees cursor at position 0.
-  useLayoutEffect(() => {
-    if (!isEditing || !justEnteredEdit.current || !textareaRef.current) return
-    justEnteredEdit.current = false
-    const ta = textareaRef.current
-    const coords = clickCoordsRef.current
-    clickCoordsRef.current = null
-
-    ta.focus({ preventScroll: true })
-
-    let offset = ta.value.length  // fallback: end of text
-    if (coords) {
-      const taRect = ta.getBoundingClientRect()
-      const relY = coords.y - taRect.top
-      const style = getComputedStyle(ta)
-      const lineHeight = parseFloat(style.lineHeight) || 20
-      const paddingTop = parseFloat(style.paddingTop) || 0
-      const lineIndex = Math.max(0, Math.floor((relY - paddingTop) / lineHeight))
-      const lines = ta.value.split('\n')
-      let lineOffset = 0
-      for (let i = 0; i < Math.min(lineIndex, lines.length - 1); i++) {
-        lineOffset += lines[i].length + 1
-      }
-      offset = lineOffset + (lines[Math.min(lineIndex, lines.length - 1)] ?? '').length
-    }
-    ta.setSelectionRange(Math.min(offset, ta.value.length), Math.min(offset, ta.value.length))
-  }, [isEditing])
-
-  function enterEdit(e: React.MouseEvent) {
-    if (readOnly) return
-    clickCoordsRef.current = { x: e.clientX, y: e.clientY }
-    justEnteredEdit.current = true
-    setDraft(value)
-    setIsEditing(true)
-  }
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = ta.scrollHeight + 'px'
+  }, [draft])
 
   function handleBlur(e: React.FocusEvent<HTMLTextAreaElement>) {
+    // Don't save if focus moved to the toolbar (toolbar uses onMouseDown+preventDefault)
     if (containerRef.current?.contains(e.relatedTarget as Node)) return
-    setIsEditing(false)
+    setIsFocused(false)
     if (draft !== value) onChange(draft)
   }
 
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const val = e.target.value
     const pos = e.target.selectionStart
+    // Live arrow substitution: -> → →, <- → ←
     if (pos >= 2) {
       const tail = val.slice(pos - 2, pos)
       let arrow: string | null = null
@@ -644,56 +771,60 @@ export function InlineMarkdownField({
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  // Both the rendered view AND the textarea are always in the DOM.
-  // The rendered view (viewRef) is ALWAYS in the document flow — it provides
-  // the container's height at all times, preventing any layout shift.
-  // During editing: the view is invisible (visibility:hidden) and the textarea
-  // is absolutely positioned on top of it, pixel-aligned.
-  // Zero layout shift on entry or exit from editing.
+  // ── Read-only: render pretty markdown, no textarea ───────────────────────────
+  if (readOnly) {
+    return (
+      <div className={cn('min-h-[2rem]', className)}>
+        {value.trim() ? <InlineMarkdownRenderer content={value} /> : null}
+      </div>
+    )
+  }
+
+  // ── Editable: transparent textarea + syntax-highlight overlay ─────────────────
   return (
     <div ref={containerRef} className={cn('relative text-sm leading-relaxed', className)}>
-      {/* Rendered view — always in layout flow, determines container height */}
+      {/* Toolbar — floats above field when focused */}
+      {isFocused && (
+        <div className="absolute right-0 z-20" style={{ bottom: '100%', marginBottom: '4px' }}>
+          <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
+        </div>
+      )}
+
+      {/* Syntax-highlight overlay — sits BEHIND the textarea (z-index 0).
+          Visible through the textarea's transparent text. */}
       <div
-        ref={viewRef}
-        onClick={!isEditing ? enterEdit : undefined}
-        className={cn(
-          'min-h-[2rem]',
-          !readOnly && !isEditing && 'cursor-text',
-          // visibility:hidden keeps the element in layout (preserves height)
-          // but makes it invisible; pointer-events:none so clicks go to textarea
-          isEditing && 'invisible pointer-events-none select-none',
-        )}
+        className="absolute inset-0 pointer-events-none select-none overflow-hidden pl-5 pr-2 py-0 text-gray-800 whitespace-pre-wrap break-words"
+        style={{ zIndex: 0 }}
+        aria-hidden
       >
-        {/* Show draft during editing so height tracks live content */}
-        {(isEditing ? draft : value).trim() ? (
-          <InlineMarkdownRenderer content={isEditing ? draft : value} />
-        ) : !readOnly ? (
-          <p className="text-gray-400 text-sm italic pl-5 py-1">{placeholder}</p>
-        ) : null}
+        {draft.trim()
+          ? syntaxHighlight(draft)
+          : <span className="text-gray-400 italic">{placeholder}</span>
+        }
       </div>
 
-      {/* Textarea — absolutely overlaid on the rendered view, zero layout impact */}
-      {isEditing && !readOnly && (
-        <>
-          <div
-            className="absolute right-0 z-20"
-            style={{ bottom: '100%', marginBottom: '4px' }}
-          >
-            <InlineMdToolbar value={draft} onChange={setDraft} textareaRef={textareaRef} />
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={handleChange}
-            onKeyDown={handleKeyDown}
-            onBlur={handleBlur}
-            placeholder={placeholder}
-            className="absolute inset-0 resize-none bg-transparent border-0 outline-none ring-0 focus:ring-0 w-full pl-5 pr-2 py-0 placeholder:text-gray-400 placeholder:italic"
-            style={{ font: 'inherit', color: 'inherit', lineHeight: 'inherit', overflow: 'hidden' }}
-          />
-        </>
-      )}
+      {/* Textarea — transparent text, visible caret, z-index 1.
+          Always present in layout flow — determines container height.
+          Browser places cursor at natural click position. */}
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onFocus={() => setIsFocused(true)}
+        onBlur={handleBlur}
+        rows={1}
+        placeholder=""
+        className="relative w-full resize-none bg-transparent border-0 outline-none ring-0 focus:ring-0 pl-5 pr-2 py-0 min-h-[2rem] overflow-hidden"
+        style={{
+          font: 'inherit',
+          lineHeight: 'inherit',
+          color: 'transparent',
+          caretColor: '#374151',
+          WebkitTextFillColor: 'transparent',
+          zIndex: 1,
+        }}
+      />
     </div>
   )
 }
