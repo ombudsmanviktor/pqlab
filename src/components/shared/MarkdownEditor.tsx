@@ -799,13 +799,64 @@ export function InlineMarkdownField({
     if (newText !== text) onChange(newText)
   }
 
+  // ── Input handlers ────────────────────────────────────────────────────────
+  //
+  // Architecture: we intercept only destructive / structural edits (deletions,
+  // Enter, paste) via onBeforeInput + e.preventDefault(), where we have full
+  // control over the model mutation.
+  //
+  // Plain character insertion is intentionally LEFT to the browser.  Fighting
+  // the browser here (calling e.preventDefault() for insertText) breaks macOS
+  // dead-keys, system text-replacement, and some IME flows because in those
+  // cases ev.data is null, so our handler inserts nothing while the browser's
+  // insertion was already prevented.
+  //
+  // After the browser inserts, onInput fires; we read el.textContent as the new
+  // truth, run the arrow substitution check, save the cursor offset, and call
+  // setDoc so React re-renders the syntax-highlighted spans. useLayoutEffect
+  // then restores the cursor to the saved offset before the browser paints.
+
   function handleBeforeInput(e: React.FormEvent<HTMLDivElement>) {
     const ev = e.nativeEvent as InputEvent
+    // Let insertText (and composition variants) be handled natively;
+    // onInput will sync the model afterwards.
+    if (
+      ev.inputType === 'insertText' ||
+      ev.inputType === 'insertCompositionText' ||
+      ev.inputType === 'insertFromComposition' ||
+      ev.inputType === 'insertFromDrop'
+    ) return
     e.preventDefault()
     applyEdit(ev.inputType, ev.data, ev.dataTransfer)
   }
 
-  // Fallback for browsers where paste doesn't fire onBeforeInput
+  // Called AFTER the browser has already mutated el for insertText / composition.
+  function handleInput() {
+    const el = editorRef.current
+    if (!el) return
+    const rawText = el.textContent ?? ''
+    // Get cursor position from the browser-updated DOM (before React re-renders)
+    const saved = getSelectionOffsets(el)
+    const cur = saved?.start ?? rawText.length
+
+    // Arrow substitution: check the two chars immediately before the cursor
+    const tail = rawText.slice(Math.max(0, cur - 2), cur)
+    let finalText = rawText
+    let finalCur = cur
+    if (tail === '->') {
+      finalText = rawText.slice(0, cur - 2) + '→' + rawText.slice(cur)
+      finalCur = cur - 1
+    } else if (tail === '<-') {
+      finalText = rawText.slice(0, cur - 2) + '←' + rawText.slice(cur)
+      finalCur = cur - 1
+    }
+
+    docRef.current = finalText
+    pendingSel.current = { start: finalCur, end: finalCur }
+    setDoc(finalText)
+    onChange(finalText)
+  }
+
   function handlePaste(e: React.ClipboardEvent<HTMLDivElement>) {
     e.preventDefault()
     const pasted = e.clipboardData.getData('text/plain')
@@ -888,6 +939,7 @@ export function InlineMarkdownField({
         contentEditable
         suppressContentEditableWarning
         onBeforeInput={handleBeforeInput}
+        onInput={handleInput}
         onPaste={handlePaste}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
