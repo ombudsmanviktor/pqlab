@@ -802,48 +802,81 @@ export function InlineMarkdownField({
   // ── Input handlers ────────────────────────────────────────────────────────
   //
   // All text mutations go through applyEdit() → setDoc() → React render →
-  // useLayoutEffect restores cursor.  We use onKeyDown as the single entry
-  // point because it fires reliably for every keystroke in every browser
-  // (unlike onBeforeInput / onInput on contenteditable in Chrome 130+).
+  // useLayoutEffect restores cursor.
   //
-  // Dead-key / IME composition (ç, é, ã, …): the browser handles the
-  // intermediate state; onCompositionEnd fires when the final character is
-  // committed, at which point we read el.textContent and sync the model.
+  // PRIMARY HANDLER: onBeforeInput — fires for every DOM-modifying event
+  // (keystrokes, delete, paste) and provides reliable e.preventDefault() to
+  // stop the browser from touching the DOM.  Per WHATWG spec (Chrome v100+),
+  // beforeinput fires even when keydown.preventDefault() was called, so
+  // keydown is NOT the right place to intercept text insertion.
   //
-  // Paste is intercepted by onPaste (which already worked correctly).
+  // IME / dead-key composition (ç, é, ã, …): onBeforeInput fires with
+  // inputType 'insertCompositionText' during the in-progress composition.
+  // We let these pass (no preventDefault) so the browser manages the
+  // composition overlay.  onCompositionEnd fires when the character commits
+  // and we read el.textContent to sync the model.
+  //
+  // Escape / Tab: no beforeinput event is fired for these, so onKeyDown
+  // handles them.
+  //
+  // Paste: onPaste intercepts clipboard paste before beforeinput fires.
+
+  function handleBeforeInput(e: React.FormEvent<HTMLDivElement>) {
+    const ev = e.nativeEvent as InputEvent
+    const { inputType, data } = ev
+
+    // IME / dead-key composition — let the browser manage the overlay;
+    // compositionend will sync the model afterwards.
+    if (
+      inputType === 'insertCompositionText' ||
+      inputType === 'insertFromComposition' ||
+      inputType === 'insertReplacementText'
+    ) return
+
+    // Undo / redo — we don't have our own undo stack; let browser handle.
+    // Note: browser undo will put DOM out of sync; the next focus cycle
+    // (onBlur → onChange) will re-sync from docRef.  Acceptable trade-off.
+    if (inputType === 'historyUndo' || inputType === 'historyRedo') return
+
+    // Stop the browser from modifying the DOM — React owns all DOM updates.
+    e.preventDefault()
+
+    switch (inputType) {
+      case 'insertText':
+        if (data) applyEdit('insertText', data, null)
+        break
+      case 'insertLineBreak':
+      case 'insertParagraph':
+        applyEdit('insertParagraph', null, null)
+        break
+      case 'deleteContentBackward':
+        applyEdit('deleteContentBackward', null, null)
+        break
+      case 'deleteWordBackward':
+        applyEdit('deleteWordBackward', null, null)
+        break
+      case 'deleteContentForward':
+        applyEdit('deleteContentForward', null, null)
+        break
+      case 'deleteWordForward':
+        applyEdit('deleteWordForward', null, null)
+        break
+      case 'insertFromPaste':
+      case 'insertFromDrop':
+        // onPaste handles clipboard paste; this covers mobile long-press paste
+        // and drag-drop which bypass onPaste.
+        applyEdit('insertFromPaste', data, ev.dataTransfer)
+        break
+      default:
+        break
+    }
+  }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    // Escape — blur the editor
     if (e.key === 'Escape') { editorRef.current?.blur(); return }
-
-    // During IME / dead-key composition let the browser manage the state;
-    // onCompositionEnd will sync the model when composition finishes.
-    if (e.nativeEvent.isComposing) return
-
-    // ── Deletion ──────────────────────────────────────────────────────────
-    // Alt/Ctrl + Backspace → delete word (Alt on macOS, Ctrl on other OSes)
-    if (e.key === 'Backspace' && (e.altKey || e.ctrlKey)) {
-      e.preventDefault(); applyEdit('deleteWordBackward', null, null); return
-    }
-    if (e.key === 'Backspace') {
-      e.preventDefault(); applyEdit('deleteContentBackward', null, null); return
-    }
-    if (e.key === 'Delete') {
-      e.preventDefault(); applyEdit('deleteContentForward', null, null); return
-    }
-
-    // ── Structure ─────────────────────────────────────────────────────────
-    if (e.key === 'Enter') {
-      e.preventDefault(); applyEdit('insertParagraph', null, null); return
-    }
-
-    // ── Printable characters ──────────────────────────────────────────────
-    // e.key is the actual character (already incorporating Shift, AltGr /
-    // Option combos).  Exclude Ctrl/Meta so copy-paste shortcuts pass through.
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-      e.preventDefault(); applyEdit('insertText', e.key, null); return
-    }
-
-    // Everything else (arrows, Tab, F-keys, Ctrl+C/Z/A …) passes through.
+    // Tab — insert two spaces (Tab does not generate a beforeinput event)
+    if (e.key === 'Tab') { e.preventDefault(); applyEdit('insertText', '  ', null); return }
   }
 
   // Dead-key / IME: browser committed the composed text to the DOM.
@@ -937,6 +970,7 @@ export function InlineMarkdownField({
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
+        onBeforeInput={handleBeforeInput}
         onKeyDown={handleKeyDown}
         onCompositionEnd={handleCompositionEnd}
         onPaste={handlePaste}
