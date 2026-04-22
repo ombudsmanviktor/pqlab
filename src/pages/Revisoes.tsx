@@ -177,14 +177,6 @@ const TIPO_LABELS: Record<TipoBanca, string> = {
   'outro': 'Outro',
 }
 
-/** Reverse map: display label → TipoBanca key */
-const TIPO_FROM_LABEL: Record<string, TipoBanca> = {
-  'TCC': 'tcc',
-  'Mestrado Acadêmico': 'mestrado-academico',
-  'Mestrado Profissional': 'mestrado-profissional',
-  'Doutorado': 'doutorado',
-  'Outro': 'outro',
-}
 
 function formatABNTArguicao(a: Arguicao): string {
   const parts = a.autor.trim().split(' ')
@@ -731,38 +723,9 @@ function ArguicaoForm({
   )
   const [newMembro, setNewMembro] = useState('')
   const [instValue, setInstValue] = useState(initial?.instituicao ?? '')
-  const [tipoBancaInput, setTipoBancaInput] = useState(() => {
-    if (!initial) return TIPO_LABELS['mestrado-academico']
-    if (initial.tipoBanca === 'outro') return initial.tipoOutro ?? TIPO_LABELS['outro']
-    return TIPO_LABELS[initial.tipoBanca]
-  })
-  const [modalidadeInput, setModalidadeInput] = useState(() => {
-    if (!initial?.modalidade) return ''
-    return initial.modalidade === 'qualificacao' ? 'Qualificação' : 'Defesa'
-  })
 
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }))
-
-  function handleTipoBancaChange(label: string) {
-    setTipoBancaInput(label)
-    const key = TIPO_FROM_LABEL[label]
-    if (key) {
-      set('tipoBanca', key)
-      if (key !== 'outro') set('tipoOutro', undefined)
-    } else if (label.trim()) {
-      // Unknown value → treat as "outro" with free-form description
-      set('tipoBanca', 'outro')
-      set('tipoOutro', label)
-    }
-  }
-
-  function handleModalidadeChange(label: string) {
-    setModalidadeInput(label)
-    if (label === 'Qualificação') set('modalidade', 'qualificacao')
-    else if (label === 'Defesa') set('modalidade', 'defesa')
-    else if (!label.trim()) set('modalidade', undefined)
-  }
 
   function addMembro() {
     if (!newMembro.trim()) return
@@ -822,34 +785,48 @@ function ArguicaoForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Tipo de banca</Label>
-            <Input
-              list="tipo-banca-list"
-              value={tipoBancaInput}
-              onChange={(e) => handleTipoBancaChange(e.target.value)}
-              placeholder="Ex.: Mestrado Acadêmico"
-              className="mt-1"
-            />
-            <datalist id="tipo-banca-list">
-              <option value="TCC" />
-              <option value="Mestrado Acadêmico" />
-              <option value="Mestrado Profissional" />
-              <option value="Doutorado" />
-              <option value="Outro" />
-            </datalist>
+            <Select
+              value={form.tipoBanca}
+              onValueChange={(v) => {
+                set('tipoBanca', v as TipoBanca)
+                if (v !== 'outro') set('tipoOutro', undefined)
+              }}
+            >
+              <SelectTrigger className="mt-1 h-9 text-sm">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="tcc">TCC</SelectItem>
+                <SelectItem value="mestrado-academico">Mestrado Acadêmico</SelectItem>
+                <SelectItem value="mestrado-profissional">Mestrado Profissional</SelectItem>
+                <SelectItem value="doutorado">Doutorado</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
+            {form.tipoBanca === 'outro' && (
+              <Input
+                value={form.tipoOutro ?? ''}
+                onChange={(e) => set('tipoOutro', e.target.value)}
+                placeholder="Especifique o tipo"
+                className="mt-1"
+              />
+            )}
           </div>
           <div>
             <Label className="text-xs">Modalidade</Label>
-            <Input
-              list="modalidade-list"
-              value={modalidadeInput}
-              onChange={(e) => handleModalidadeChange(e.target.value)}
-              placeholder="Ex.: Defesa"
-              className="mt-1"
-            />
-            <datalist id="modalidade-list">
-              <option value="Qualificação" />
-              <option value="Defesa" />
-            </datalist>
+            <Select
+              value={form.modalidade ?? '__none__'}
+              onValueChange={(v) => set('modalidade', v === '__none__' ? undefined : v as ModalidadeBanca)}
+            >
+              <SelectTrigger className="mt-1 h-9 text-sm">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Sem especificar</SelectItem>
+                <SelectItem value="qualificacao">Qualificação</SelectItem>
+                <SelectItem value="defesa">Defesa</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div>
@@ -1126,15 +1103,18 @@ function ArguicaoCard({
             )}
           </div>
           <div className="flex items-center gap-1 ml-2 shrink-0">
-            <button onClick={() => exportArguicaoPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <Download className="w-4 h-4" />
-            </button>
-            <button onClick={() => exportArguicaoMarkdown(data)} title="Exportar Markdown" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <FileText className="w-4 h-4" />
-            </button>
-            <button onClick={() => exportArguicaoDocx(data)} title="Exportar DOCX" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <BookOpen className="w-4 h-4" />
-            </button>
+            {/* Export buttons — hidden on mobile to prevent content squeeze */}
+            <div className="hidden sm:flex items-center gap-1">
+              <button onClick={() => exportArguicaoPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <Download className="w-4 h-4" />
+              </button>
+              <button onClick={() => exportArguicaoMarkdown(data)} title="Exportar Markdown" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <FileText className="w-4 h-4" />
+              </button>
+              <button onClick={() => exportArguicaoDocx(data)} title="Exportar DOCX" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <BookOpen className="w-4 h-4" />
+              </button>
+            </div>
             <button onClick={onEdit} title="Editar metadados" className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
               <Edit2 className="w-4 h-4" />
             </button>
@@ -1228,15 +1208,18 @@ function ParecerCard({
             )}
           </div>
           <div className="flex items-center gap-1 ml-2 shrink-0">
-            <button onClick={() => exportParecerPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <Download className="w-4 h-4" />
-            </button>
-            <button onClick={() => exportParecerMarkdown(data)} title="Exportar Markdown" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <FileText className="w-4 h-4" />
-            </button>
-            <button onClick={() => exportParecerDocx(data)} title="Exportar DOCX" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              <BookOpen className="w-4 h-4" />
-            </button>
+            {/* Export buttons — hidden on mobile to prevent content squeeze */}
+            <div className="hidden sm:flex items-center gap-1">
+              <button onClick={() => exportParecerPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <Download className="w-4 h-4" />
+              </button>
+              <button onClick={() => exportParecerMarkdown(data)} title="Exportar Markdown" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <FileText className="w-4 h-4" />
+              </button>
+              <button onClick={() => exportParecerDocx(data)} title="Exportar DOCX" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                <BookOpen className="w-4 h-4" />
+              </button>
+            </div>
             <button onClick={onEdit} title="Editar metadados" className="p-1.5 text-gray-400 hover:text-teal-600 hover:bg-teal-50 rounded-md transition-colors">
               <Edit2 className="w-4 h-4" />
             </button>
