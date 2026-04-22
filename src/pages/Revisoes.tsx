@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react'
 import jsPDF from 'jspdf'
 import { load as yamlLoad } from 'js-yaml'
 import {
@@ -703,6 +703,147 @@ function exportAllCSV(revisoes: Revisao[]) {
   URL.revokeObjectURL(url)
 }
 
+// ─── Instituição autocomplete ───────────────────────────────────────────────
+
+function InstituicaoAutocomplete({
+  value: externalValue,
+  onChange: externalOnChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [typed, setTyped] = useState(externalValue)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [showPanel, setShowPanel] = useState(false)
+  const [activeIdx, setActiveIdx] = useState(0)
+
+  // Ghost text only if the top suggestion begins with the typed value
+  const topSuggestion = useMemo(() => {
+    if (!showPanel || suggestions.length === 0 || !typed.trim()) return null
+    const s = suggestions[0]
+    return s.toLowerCase().startsWith(typed.toLowerCase()) ? s : null
+  }, [showPanel, suggestions, typed])
+
+  const displayValue = topSuggestion ?? typed
+
+  // After each render, select the ghost portion so the user can Tab to accept
+  useLayoutEffect(() => {
+    const input = inputRef.current
+    if (!input || !topSuggestion || document.activeElement !== input) return
+    input.setSelectionRange(typed.length, topSuggestion.length)
+  })
+
+  function filterMatches(query: string) {
+    if (!query.trim()) return []
+    const q = query.toLowerCase()
+    return INSTITUICOES_BRASIL.filter(i => i.toLowerCase().includes(q)).slice(0, 5)
+  }
+
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const newVal = e.target.value
+    // If ghost was selected and user pressed Backspace, newVal === typed (ghost cleared)
+    if (topSuggestion && newVal === typed) {
+      setTyped(newVal)
+      externalOnChange(newVal)
+      setSuggestions([])
+      setShowPanel(false)
+      return
+    }
+    setTyped(newVal)
+    externalOnChange(newVal)
+    const matches = filterMatches(newVal)
+    setSuggestions(matches)
+    setShowPanel(matches.length > 0)
+    setActiveIdx(0)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Tab' && topSuggestion) {
+      e.preventDefault()
+      setTyped(topSuggestion)
+      externalOnChange(topSuggestion)
+      setSuggestions([])
+      setShowPanel(false)
+      requestAnimationFrame(() => {
+        inputRef.current?.setSelectionRange(topSuggestion.length, topSuggestion.length)
+      })
+      return
+    }
+    if (!showPanel) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIdx(i => Math.min(i + 1, suggestions.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIdx(i => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      acceptSuggestion(suggestions[activeIdx])
+    } else if (e.key === 'Escape') {
+      setShowPanel(false)
+    }
+  }
+
+  function acceptSuggestion(s: string) {
+    setTyped(s)
+    externalOnChange(s)
+    setSuggestions([])
+    setShowPanel(false)
+    requestAnimationFrame(() => {
+      inputRef.current?.focus()
+      inputRef.current?.setSelectionRange(s.length, s.length)
+    })
+  }
+
+  // Sync when form resets (e.g. opening the form for a new entry)
+  useEffect(() => {
+    setTyped(externalValue)
+    setSuggestions([])
+    setShowPanel(false)
+  }, [externalValue])
+
+  return (
+    <div className="relative mt-1">
+      <Input
+        ref={inputRef}
+        value={displayValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onFocus={() => {
+          if (typed.trim()) {
+            const matches = filterMatches(typed)
+            if (matches.length > 0) { setSuggestions(matches); setShowPanel(true) }
+          }
+        }}
+        onBlur={() => setTimeout(() => setShowPanel(false), 150)}
+        placeholder="Digite a sigla ou nome (ex: UFPA)"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {showPanel && suggestions.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-md shadow-md top-full mt-1 py-1 overflow-hidden">
+          {suggestions.map((s, i) => (
+            <button
+              key={s}
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); acceptSuggestion(s) }}
+              className={`w-full text-left px-3 py-1.5 text-sm truncate transition-colors ${
+                i === activeIdx ? 'bg-teal-50 text-teal-800 font-medium' : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+          {topSuggestion && (
+            <p className="px-3 pt-1 pb-0.5 text-xs text-gray-400 border-t">Tab para completar</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Arguição form ─────────────────────────────────────────────────────────
 
 const EMPTY_ARGUICAO: Omit<Arguicao, 'id' | 'created_at' | 'updated_at'> = {
@@ -722,7 +863,6 @@ function ArguicaoForm({
     initial ? { ...initial } : { ...EMPTY_ARGUICAO }
   )
   const [newMembro, setNewMembro] = useState('')
-  const [instValue, setInstValue] = useState(initial?.instituicao ?? '')
 
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }))
@@ -765,18 +905,10 @@ function ArguicaoForm({
         </div>
         <div>
           <Label className="text-xs">Instituição</Label>
-          <Input
-            list="instituicoes-list"
-            value={instValue}
-            onChange={(e) => { setInstValue(e.target.value); set('instituicao', e.target.value) }}
-            placeholder="Digite a sigla ou nome (ex: UFPA)"
-            className="mt-1"
+          <InstituicaoAutocomplete
+            value={form.instituicao}
+            onChange={(v) => set('instituicao', v)}
           />
-          <datalist id="instituicoes-list">
-            {INSTITUICOES_BRASIL.map((inst) => (
-              <option key={inst} value={inst} />
-            ))}
-          </datalist>
         </div>
         <div>
           <Label className="text-xs">Orientador(a)</Label>
@@ -983,7 +1115,8 @@ function ArguicaoCard({
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="pt-4 pb-4">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-teal-50 flex items-center justify-center flex-shrink-0 mt-0.5">
             <Users className="w-4 h-4 text-teal-600" />
           </div>
@@ -1102,7 +1235,8 @@ function ArguicaoCard({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 ml-2 shrink-0">
+          </div>
+          <div className="flex items-center gap-1 shrink-0 self-end sm:self-start sm:ml-2">
             {/* Export buttons — hidden on mobile to prevent content squeeze */}
             <div className="hidden sm:flex items-center gap-1">
               <button onClick={() => exportArguicaoPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
@@ -1167,7 +1301,8 @@ function ParecerCard({
   return (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="pt-4 pb-4">
-        <div className="flex items-start gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0 mt-0.5">
             <ClipboardCheck className="w-4 h-4 text-cyan-600" />
           </div>
@@ -1207,7 +1342,8 @@ function ParecerCard({
               </div>
             )}
           </div>
-          <div className="flex items-center gap-1 ml-2 shrink-0">
+          </div>
+          <div className="flex items-center gap-1 shrink-0 self-end sm:self-start sm:ml-2">
             {/* Export buttons — hidden on mobile to prevent content squeeze */}
             <div className="hidden sm:flex items-center gap-1">
               <button onClick={() => exportParecerPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
