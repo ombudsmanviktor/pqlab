@@ -717,6 +717,9 @@ function InstituicaoAutocomplete({
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [showPanel, setShowPanel] = useState(false)
   const [activeIdx, setActiveIdx] = useState(0)
+  // Tracks the value we last emitted via onChange so we can distinguish
+  // self-triggered prop updates (user typing) from genuine external resets.
+  const lastEmittedRef = useRef(externalValue)
 
   // Ghost text only if the top suggestion begins with the typed value
   const topSuggestion = useMemo(() => {
@@ -745,12 +748,14 @@ function InstituicaoAutocomplete({
     // If ghost was selected and user pressed Backspace, newVal === typed (ghost cleared)
     if (topSuggestion && newVal === typed) {
       setTyped(newVal)
+      lastEmittedRef.current = newVal
       externalOnChange(newVal)
       setSuggestions([])
       setShowPanel(false)
       return
     }
     setTyped(newVal)
+    lastEmittedRef.current = newVal
     externalOnChange(newVal)
     const matches = filterMatches(newVal)
     setSuggestions(matches)
@@ -762,6 +767,7 @@ function InstituicaoAutocomplete({
     if (e.key === 'Tab' && topSuggestion) {
       e.preventDefault()
       setTyped(topSuggestion)
+      lastEmittedRef.current = topSuggestion
       externalOnChange(topSuggestion)
       setSuggestions([])
       setShowPanel(false)
@@ -787,6 +793,7 @@ function InstituicaoAutocomplete({
 
   function acceptSuggestion(s: string) {
     setTyped(s)
+    lastEmittedRef.current = s
     externalOnChange(s)
     setSuggestions([])
     setShowPanel(false)
@@ -796,11 +803,16 @@ function InstituicaoAutocomplete({
     })
   }
 
-  // Sync when form resets (e.g. opening the form for a new entry)
+  // Sync only when the value changes externally (form reset / edit load),
+  // NOT when we triggered the change ourselves via onChange.
+  // lastEmittedRef tracks what we last sent out so we can tell the difference.
   useEffect(() => {
-    setTyped(externalValue)
-    setSuggestions([])
-    setShowPanel(false)
+    if (externalValue !== lastEmittedRef.current) {
+      lastEmittedRef.current = externalValue
+      setTyped(externalValue)
+      setSuggestions([])
+      setShowPanel(false)
+    }
   }, [externalValue])
 
   return (

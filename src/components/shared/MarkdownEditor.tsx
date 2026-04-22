@@ -734,6 +734,13 @@ export function InlineMarkdownField({
     restoreSelectionOffsets(el, sel.start, sel.end)
   })
 
+  // ── Native beforeinput listener ───────────────────────────────────────────
+  // We attach directly to the element (not via React's root-delegated system)
+  // so ev.preventDefault() reliably cancels the browser's default text
+  // insertion regardless of React 19 / browser version differences.
+  // A ref holds the current handler so the effect closure never goes stale.
+  const nativeBeforeInputRef = useRef<((ev: InputEvent) => void) | null>(null)
+
   // ── Input pipeline: intercept → mutate model → restore selection ───────────
   function applyEdit(inputType: string, data: string | null, dataTransfer: DataTransfer | null) {
     const el = editorRef.current!
@@ -804,42 +811,38 @@ export function InlineMarkdownField({
   // All text mutations go through applyEdit() → setDoc() → React render →
   // useLayoutEffect restores cursor.
   //
-  // PRIMARY HANDLER: onBeforeInput — fires for every DOM-modifying event
-  // (keystrokes, delete, paste) and provides reliable e.preventDefault() to
-  // stop the browser from touching the DOM.  Per WHATWG spec (Chrome v100+),
-  // beforeinput fires even when keydown.preventDefault() was called, so
-  // keydown is NOT the right place to intercept text insertion.
+  // PRIMARY HANDLER: native 'beforeinput' event listener attached directly
+  // to the element (see useEffect below).  Calling ev.preventDefault() on
+  // the actual InputEvent — NOT on React's root-delegated wrapper — is the
+  // most reliable way to prevent browser DOM modification across React 19,
+  // Chrome, Safari, and mobile browsers.  This is the same pattern used by
+  // Lexical and ProseMirror.
   //
-  // IME / dead-key composition (ç, é, ã, …): onBeforeInput fires with
+  // IME / dead-key composition (ç, é, ã, …): beforeinput fires with
   // inputType 'insertCompositionText' during the in-progress composition.
-  // We let these pass (no preventDefault) so the browser manages the
-  // composition overlay.  onCompositionEnd fires when the character commits
-  // and we read el.textContent to sync the model.
+  // We let these pass so the browser manages the composition overlay.
+  // onCompositionEnd fires when the character commits and we read
+  // el.textContent to sync the model.
   //
-  // Escape / Tab: no beforeinput event is fired for these, so onKeyDown
-  // handles them.
-  //
-  // Paste: onPaste intercepts clipboard paste before beforeinput fires.
+  // Escape / Tab: handled by onKeyDown (no beforeinput event for these).
+  // Paste: onPaste fires before beforeinput and takes priority.
 
-  function handleBeforeInput(e: React.FormEvent<HTMLDivElement>) {
-    const ev = e.nativeEvent as InputEvent
+  // Updated every render so the effect closure always sees current applyEdit.
+  nativeBeforeInputRef.current = (ev: InputEvent) => {
     const { inputType, data } = ev
 
-    // IME / dead-key composition — let the browser manage the overlay;
-    // compositionend will sync the model afterwards.
+    // Let the browser manage IME / dead-key composition overlay.
     if (
       inputType === 'insertCompositionText' ||
       inputType === 'insertFromComposition' ||
       inputType === 'insertReplacementText'
     ) return
 
-    // Undo / redo — we don't have our own undo stack; let browser handle.
-    // Note: browser undo will put DOM out of sync; the next focus cycle
-    // (onBlur → onChange) will re-sync from docRef.  Acceptable trade-off.
+    // Let the browser handle undo/redo (DOM re-syncs on next blur/focus).
     if (inputType === 'historyUndo' || inputType === 'historyRedo') return
 
     // Stop the browser from modifying the DOM — React owns all DOM updates.
-    e.preventDefault()
+    ev.preventDefault()
 
     switch (inputType) {
       case 'insertText':
@@ -871,6 +874,16 @@ export function InlineMarkdownField({
         break
     }
   }
+
+  // Attach native beforeinput listener once; the ref keeps the closure fresh.
+  useEffect(() => {
+    const el = editorRef.current
+    if (!el) return
+    const handler = (ev: Event) => nativeBeforeInputRef.current?.(ev as InputEvent)
+    el.addEventListener('beforeinput', handler)
+    return () => el.removeEventListener('beforeinput', handler)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     // Escape — blur the editor
@@ -970,7 +983,6 @@ export function InlineMarkdownField({
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
-        onBeforeInput={handleBeforeInput}
         onKeyDown={handleKeyDown}
         onCompositionEnd={handleCompositionEnd}
         onPaste={handlePaste}
