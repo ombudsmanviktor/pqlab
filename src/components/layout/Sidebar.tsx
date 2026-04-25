@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   BookOpen, Bookmark, FileText, CalendarDays, List, CheckSquare,
-  LogOut, X, GraduationCap, Network, ClipboardCheck, Kanban, Sun, Moon,
+  LogOut, X, GraduationCap, Network, ClipboardCheck, Kanban, Sun, Moon, ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDarkMode } from '@/contexts/DarkModeContext'
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/diario',      label: 'Diário de Campo',     icon: BookOpen,       color: 'text-amber-600',  bg: 'bg-amber-50',  activeBg: 'bg-amber-100' },
   { to: '/listas',      label: 'Listas e Memorandos', icon: List,           color: 'text-orange-600', bg: 'bg-orange-50', activeBg: 'bg-orange-100' },
   { to: '/tarefas',     label: 'Tarefas',              icon: CheckSquare,    color: 'text-pink-600',   bg: 'bg-pink-50',   activeBg: 'bg-pink-100' },
+  { to: '/ordemdia',   label: 'Ordem do Dia',         icon: ClipboardList,  color: 'text-violet-600', bg: 'bg-violet-50', activeBg: 'bg-violet-100' },
   { to: '/bookmarks',   label: 'Favoritos',            icon: Bookmark,       color: 'text-blue-600',   bg: 'bg-blue-50',   activeBg: 'bg-blue-100' },
   { to: '/fichamentos', label: 'Fichamentos',           icon: FileText,       color: 'text-green-600',  bg: 'bg-green-50',  activeBg: 'bg-green-100' },
   { to: '/revisoes',    label: 'Revisões',              icon: ClipboardCheck, color: 'text-teal-600',   bg: 'bg-teal-50',   activeBg: 'bg-teal-100' },

@@ -263,3 +263,26 @@ export interface SubmissaoEvento {
   revista?: string
   created_at: string
 }
+
+// ─── Módulo Ordem do Dia ──────────────────────────────────────────────────
+
+export interface Pauta {
+  id: string
+  title: string
+  order: number
+}
+
+export interface Ata {
+  content: string
+  updated_at: string
+}
+
+export interface OrdemDoDia {
+  id: string
+  title: string
+  meeting_date?: string   // YYYY-MM-DD, opcional
+  pautas: Pauta[]
+  ata: Ata
+  created_at: string
+  updated_at: string
+}

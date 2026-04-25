@@ -33,6 +33,7 @@ import type {
   Anexo,
   Submissao,
   SubmissaoEvento,
+  OrdemDoDia,
 } from '@/types'
 
 // ─── SHA cache ────────────────────────────────────────────────────────────
@@ -438,4 +439,28 @@ export async function saveSubmissaoFile(
 
 export async function deleteSubmissaoFile(id: string): Promise<void> {
   await deleteYaml(`data/submissoes/${id}.yaml`, `Delete submissao ${id}`)
+}
+
+// ─── ORDEM DO DIA ─────────────────────────────────────────────────────────
+
+export async function loadOrdemDoDias(): Promise<OrdemDoDia[]> {
+  const files = await listYamls('data/ordemdia')
+  if (files.length === 0) return []
+  const docs = await Promise.all(files.map((f) => readYaml<OrdemDoDia>(f)))
+  return docs
+    .map((o) => ({
+      ...o,
+      pautas: o.pautas ?? [],
+      ata: o.ata ?? { content: '', updated_at: '' },
+    }))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+}
+
+export async function saveOrdemDoDia(o: OrdemDoDia): Promise<void> {
+  const doc = { ...o, updated_at: new Date().toISOString() }
+  await writeYaml(`data/ordemdia/${o.id}.yaml`, doc, `Update ordemdia ${o.id}`)
+}
+
+export async function deleteOrdemDoDia(id: string): Promise<void> {
+  await deleteYaml(`data/ordemdia/${id}.yaml`, `Delete ordemdia ${id}`)
 }
