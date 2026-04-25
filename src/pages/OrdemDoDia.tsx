@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
-  ClipboardList, Plus, Trash2, GripVertical, ChevronDown, ChevronUp, Calendar,
+  ClipboardList, Plus, Trash2, GripVertical, ChevronDown, ChevronUp, Calendar, Archive, ArchiveRestore,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +31,7 @@ const DEMO: OrdemDoDia[] = [
         '## Encaminhamentos\n\nO capítulo 2 foi aprovado com revisões menores. Prazo para qualificação definido para julho.\n\n- Revisar seção 2.3 até 20/03\n- Levantar referências sobre memória coletiva',
       updated_at: '2026-03-12T15:30:00Z',
     },
+    archived: false,
     created_at: '2026-03-12T14:00:00Z',
     updated_at: '2026-03-12T15:30:00Z',
   },
@@ -43,6 +44,7 @@ const DEMO: OrdemDoDia[] = [
       { id: 'p5', title: 'Próximos passos em campo', order: 1 },
     ],
     ata: { content: '', updated_at: '' },
+    archived: true,
     created_at: '2026-02-20T10:00:00Z',
     updated_at: '2026-02-20T10:00:00Z',
   },
@@ -50,13 +52,7 @@ const DEMO: OrdemDoDia[] = [
 
 // ─── AtaSection ───────────────────────────────────────────────────────────
 
-function AtaSection({
-  ata,
-  onChange,
-}: {
-  ata: Ata
-  onChange: (a: Ata) => void
-}) {
+function AtaSection({ ata, onChange }: { ata: Ata; onChange: (a: Ata) => void }) {
   const [open, setOpen] = useState(false)
   const hasContent = ata.content.trim().length > 0
 
@@ -77,14 +73,11 @@ function AtaSection({
           <span className="ml-2 text-xs text-gray-300 font-normal italic">vazia</span>
         )}
       </button>
-
       {open && (
         <div className="mt-2">
           <InlineMarkdownField
             value={ata.content}
-            onChange={(content) =>
-              onChange({ content, updated_at: new Date().toISOString() })
-            }
+            onChange={(content) => onChange({ content, updated_at: new Date().toISOString() })}
             placeholder="Escreva a ata da reunião…"
             className="min-h-[4rem] text-sm"
           />
@@ -105,6 +98,7 @@ function PautaRow({
   onChange,
   onDelete,
   onBlur,
+  onEnter,
 }: {
   pauta: Pauta
   index: number
@@ -118,6 +112,7 @@ function PautaRow({
   onChange: (id: string, title: string) => void
   onDelete: (id: string) => void
   onBlur: () => void
+  onEnter: () => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -149,6 +144,13 @@ function PautaRow({
         value={pauta.title}
         onChange={(e) => onChange(pauta.id, e.target.value)}
         onBlur={onBlur}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            inputRef.current?.blur()
+            onEnter()
+          }
+        }}
         placeholder="Pauta…"
       />
       <button
@@ -168,11 +170,13 @@ function OrdemDoDiaCard({
   isSaving,
   onSave,
   onDelete,
+  onArchive,
 }: {
   item: OrdemDoDia
   isSaving: boolean
   onSave: (o: OrdemDoDia) => void
   onDelete: (id: string) => void
+  onArchive: (id: string) => void
 }) {
   const [current, setCurrent] = useState<OrdemDoDia>(item)
   const [titleDraft, setTitleDraft] = useState(item.title)
@@ -186,9 +190,7 @@ function OrdemDoDiaCard({
   function handleTitleBlur() {
     const title = titleDraft.trim() || 'Sem título'
     setTitleDraft(title)
-    if (title !== current.title) {
-      save({ ...current, title })
-    }
+    if (title !== current.title) save({ ...current, title })
   }
 
   function handleMeetingDateChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -203,11 +205,14 @@ function OrdemDoDiaCard({
     }))
   }
 
-  function handlePautaBlur() {
-    const filtered = current.pautas.filter((p) => p.title.trim() !== '')
-    const reordered = filtered.map((p, i) => ({ ...p, order: i }))
-    const updated = { ...current, pautas: reordered }
-    save(updated)
+  function saveCurrentPautas() {
+    setCurrent((prev) => {
+      const filtered = prev.pautas.filter((p) => p.title.trim() !== '')
+      const reordered = filtered.map((p, i) => ({ ...p, order: i }))
+      const updated = { ...prev, pautas: reordered }
+      onSave(updated)
+      return updated
+    })
     setNewPautaId(null)
   }
 
@@ -225,9 +230,13 @@ function OrdemDoDiaCard({
     setNewPautaId(id)
   }
 
+  function handleEnterOnPauta() {
+    // After blur saves, add next pauta
+    handleAddPauta()
+  }
+
   function handleAtaChange(ata: Ata) {
-    const updated = { ...current, ata }
-    save(updated)
+    save({ ...current, ata })
   }
 
   function handleDragEnd(result: DropResult) {
@@ -265,18 +274,25 @@ function OrdemDoDiaCard({
             <Badge variant="secondary" className="text-xs font-mono bg-violet-50 text-violet-500 border-violet-100 border">
               criado {formatDate(current.created_at.split('T')[0])}
             </Badge>
-            {isSaving && (
-              <span className="text-xs text-gray-300 animate-pulse">salvando…</span>
-            )}
+            {isSaving && <span className="text-xs text-gray-300 animate-pulse">salvando…</span>}
           </div>
         </div>
-        <button
-          onClick={() => onDelete(item.id)}
-          className="opacity-0 group-hover/card:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-all flex-shrink-0 mt-0.5"
-          title="Excluir Ordem do Dia"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+          <button
+            onClick={() => onArchive(item.id)}
+            className="opacity-0 group-hover/card:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-all"
+            title="Arquivar"
+          >
+            <Archive className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="opacity-0 group-hover/card:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-all"
+            title="Excluir"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
       </div>
 
       {/* Pautas */}
@@ -296,7 +312,8 @@ function OrdemDoDiaCard({
                         isDragging={snapshot.isDragging}
                         onChange={handlePautaChange}
                         onDelete={handleDeletePauta}
-                        onBlur={handlePautaBlur}
+                        onBlur={saveCurrentPautas}
+                        onEnter={handleEnterOnPauta}
                       />
                     )}
                   </Draggable>
@@ -308,9 +325,7 @@ function OrdemDoDiaCard({
         </DragDropContext>
 
         {current.pautas.length === 0 && (
-          <p className="text-xs text-gray-300 italic px-2 py-1.5 select-none">
-            Nenhuma pauta ainda.
-          </p>
+          <p className="text-xs text-gray-300 italic px-2 py-1.5 select-none">Nenhuma pauta ainda.</p>
         )}
 
         <button
@@ -330,6 +345,70 @@ function OrdemDoDiaCard({
   )
 }
 
+// ─── ArchivedSection ──────────────────────────────────────────────────────
+
+function ArchivedSection({
+  items,
+  onUnarchive,
+  onDelete,
+}: {
+  items: OrdemDoDia[]
+  onUnarchive: (id: string) => void
+  onDelete: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  if (items.length === 0) return null
+
+  return (
+    <div className="border-t border-gray-100 mt-4 pt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-sm font-medium text-gray-400 hover:text-gray-600 transition-colors mb-3"
+      >
+        {open ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+        <Archive className="w-4 h-4" />
+        Arquivadas ({items.length})
+      </button>
+      {open && (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div
+              key={item.id}
+              className="group/arc flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-500 truncate">{item.title}</p>
+                <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                  {item.meeting_date && (
+                    <span className="text-xs text-gray-400">{formatDate(item.meeting_date)}</span>
+                  )}
+                  <span className="text-xs text-gray-300">{item.pautas.length} pauta{item.pautas.length !== 1 ? 's' : ''}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => onUnarchive(item.id)}
+                  className="opacity-0 group-hover/arc:opacity-70 hover:!opacity-100 p-1.5 rounded hover:bg-white text-gray-300 hover:text-amber-500 transition-all"
+                  title="Desarquivar"
+                >
+                  <ArchiveRestore className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => onDelete(item.id)}
+                  className="opacity-0 group-hover/arc:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-all"
+                  title="Excluir"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Page root ────────────────────────────────────────────────────────────
 
 export function OrdemDoDiaPage() {
@@ -340,17 +419,31 @@ export function OrdemDoDiaPage() {
   const { toasts, toast, dismiss } = useToast()
   const { isDemoMode } = useAuth()
 
+  // Serializes concurrent saves for the same item to avoid SHA conflicts
+  const pendingSaves = useRef<Map<string, Promise<void>>>(new Map())
+
   useEffect(() => {
-    if (isDemoMode) {
-      setItems(DEMO)
-      setLoading(false)
-      return
-    }
+    if (isDemoMode) { setItems(DEMO); setLoading(false); return }
     loadOrdemDoDias()
       .then(setItems)
       .catch(() => toast({ title: 'Erro ao carregar ordens do dia', variant: 'destructive' }))
       .finally(() => setLoading(false))
   }, [isDemoMode])
+
+  async function persistSave(item: OrdemDoDia) {
+    // Wait for any in-flight save for this item ID (avoids SHA race conditions)
+    const inFlight = pendingSaves.current.get(item.id)
+    if (inFlight) await inFlight.catch(() => {})
+
+    const promise = saveOrdemDoDia(item)
+      .catch(() => { toast({ title: 'Erro ao salvar', variant: 'destructive' }) })
+      .finally(() => {
+        if (pendingSaves.current.get(item.id) === promise) pendingSaves.current.delete(item.id)
+        setSaving((prev) => { const s = new Set(prev); s.delete(item.id); return s })
+      })
+    pendingSaves.current.set(item.id, promise)
+    return promise
+  }
 
   function handleCreate() {
     const now = new Date().toISOString()
@@ -359,44 +452,48 @@ export function OrdemDoDiaPage() {
       title: 'Nova Ordem do Dia',
       pautas: [],
       ata: { content: '', updated_at: now },
+      archived: false,
       created_at: now,
       updated_at: now,
     }
     setItems((prev) => [newItem, ...prev])
     if (!isDemoMode) {
-      saveOrdemDoDia(newItem).catch(() =>
-        toast({ title: 'Erro ao criar', variant: 'destructive' })
-      )
+      setSaving((prev) => new Set(prev).add(newItem.id))
+      persistSave(newItem)
     }
   }
 
-  async function handleSave(updated: OrdemDoDia) {
+  function handleSave(updated: OrdemDoDia) {
     setItems((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
     if (isDemoMode) return
     setSaving((prev) => new Set(prev).add(updated.id))
-    try {
-      await saveOrdemDoDia(updated)
-    } catch {
-      toast({ title: 'Erro ao salvar', variant: 'destructive' })
-    } finally {
-      setSaving((prev) => {
-        const s = new Set(prev)
-        s.delete(updated.id)
-        return s
-      })
-    }
+    persistSave(updated)
+  }
+
+  function handleArchive(id: string) {
+    const item = items.find((x) => x.id === id)
+    if (!item) return
+    const updated = { ...item, archived: true }
+    handleSave(updated)
+  }
+
+  function handleUnarchive(id: string) {
+    const item = items.find((x) => x.id === id)
+    if (!item) return
+    const updated = { ...item, archived: false }
+    handleSave(updated)
   }
 
   async function handleDelete(id: string) {
     setItems((prev) => prev.filter((x) => x.id !== id))
     if (!isDemoMode) {
-      try {
-        await deleteOrdemDoDia(id)
-      } catch {
-        toast({ title: 'Erro ao excluir', variant: 'destructive' })
-      }
+      try { await deleteOrdemDoDia(id) }
+      catch { toast({ title: 'Erro ao excluir', variant: 'destructive' }) }
     }
   }
+
+  const activeItems = items.filter((x) => !x.archived)
+  const archivedItems = items.filter((x) => x.archived)
 
   return (
     <div className="flex flex-col h-full">
@@ -410,53 +507,51 @@ export function OrdemDoDiaPage() {
             <h1 className="text-lg font-semibold text-gray-900">Ordem do Dia</h1>
             {!loading && (
               <p className="text-xs text-gray-400">
-                {items.length} {items.length === 1 ? 'reunião' : 'reuniões'}
+                {activeItems.length} {activeItems.length === 1 ? 'reunião' : 'reuniões'}
               </p>
             )}
           </div>
         </div>
-        <Button
-          onClick={handleCreate}
-          className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white"
-          size="sm"
-        >
+        <Button onClick={handleCreate} className="gap-1.5 bg-violet-600 hover:bg-violet-700 text-white" size="sm">
           <Plus className="w-4 h-4" />
           Nova Ordem do Dia
         </Button>
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-6 py-4">
         {loading ? (
-          <div className="flex items-center justify-center py-20 text-gray-400 text-sm">
-            Carregando…
-          </div>
-        ) : items.length === 0 ? (
+          <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Carregando…</div>
+        ) : activeItems.length === 0 && archivedItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <div className="w-12 h-12 rounded-xl bg-violet-50 flex items-center justify-center">
               <ClipboardList className="w-6 h-6 text-violet-400" />
             </div>
             <p className="text-sm text-gray-500">Nenhuma Ordem do Dia ainda.</p>
-            <Button
-              onClick={handleCreate}
-              variant="outline"
-              size="sm"
-              className="gap-1.5 border-violet-200 text-violet-600 hover:bg-violet-50"
-            >
+            <Button onClick={handleCreate} variant="outline" size="sm" className="gap-1.5 border-violet-200 text-violet-600 hover:bg-violet-50">
               <Plus className="w-4 h-4" />
               Criar primeira Ordem do Dia
             </Button>
           </div>
         ) : (
-          items.map((item) => (
-            <OrdemDoDiaCard
-              key={item.id}
-              item={item}
-              isSaving={saving.has(item.id)}
-              onSave={handleSave}
+          <div className="space-y-4">
+            {activeItems.map((item) => (
+              <OrdemDoDiaCard
+                key={item.id}
+                item={item}
+                isSaving={saving.has(item.id)}
+                onSave={handleSave}
+                onDelete={(id) => setDeleteTarget(id)}
+                onArchive={handleArchive}
+              />
+            ))}
+
+            <ArchivedSection
+              items={archivedItems}
+              onUnarchive={handleUnarchive}
               onDelete={(id) => setDeleteTarget(id)}
             />
-          ))
+          </div>
         )}
       </div>
 
@@ -466,22 +561,10 @@ export function OrdemDoDiaPage() {
           <DialogHeader>
             <DialogTitle>Excluir Ordem do Dia?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-600">
-            Esta ação é irreversível. A ata e todas as pautas serão removidas.
-          </p>
+          <p className="text-sm text-gray-600">Esta ação é irreversível. A ata e todas as pautas serão removidas.</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (deleteTarget) handleDelete(deleteTarget)
-                setDeleteTarget(null)
-              }}
-            >
-              Excluir
-            </Button>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
+            <Button variant="destructive" onClick={() => { if (deleteTarget) handleDelete(deleteTarget); setDeleteTarget(null) }}>Excluir</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

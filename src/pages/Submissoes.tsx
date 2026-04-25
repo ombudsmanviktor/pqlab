@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
-import { Plus, Kanban, Pencil, Trash2, Calendar, Users, ChevronDown, ChevronUp, Eye, EyeOff, CalendarPlus } from 'lucide-react'
+import {
+  Plus, Kanban, Pencil, Trash2, Calendar, Users, ChevronDown, ChevronUp,
+  Eye, EyeOff, CalendarPlus, Clock, Tag, X, AlarmClock,
+} from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/useToast'
 import { loadSubmissoes, saveSubmissaoFile, deleteSubmissaoFile } from '@/lib/storage'
@@ -31,11 +34,28 @@ const COLUNA_REMAP: Record<string, string> = {
   rejeitado: 'purgatorio',
 }
 
+const TAG_COLORS = [
+  'bg-blue-100 text-blue-700',
+  'bg-green-100 text-green-700',
+  'bg-purple-100 text-purple-700',
+  'bg-orange-100 text-orange-700',
+  'bg-pink-100 text-pink-700',
+  'bg-teal-100 text-teal-700',
+  'bg-amber-100 text-amber-700',
+  'bg-indigo-100 text-indigo-700',
+]
+
+function tagColor(tag: string) {
+  let hash = 0
+  for (let i = 0; i < tag.length; i++) hash = (hash * 31 + tag.charCodeAt(i)) & 0xffff
+  return TAG_COLORS[hash % TAG_COLORS.length]
+}
+
 const DEMO_SUBMISSOES: Submissao[] = [
-  { id: '1', user_id: 'demo-user-id', titulo_provisorio: 'ML em EaD: uma revisão sistemática', autores: ['Ana Mendes', 'João Silva'], resumo: 'Este artigo apresenta uma revisão sistemática sobre o uso de ML em plataformas de ensino a distância.', coluna: 'em_preparacao', ultima_atividade: '2024-03-10', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: '2', user_id: 'demo-user-id', titulo_provisorio: 'Chatbots LLM no Ensino Superior', autores: ['Bruno Lima', 'João Silva'], coluna: 'submetido', ultima_atividade: '2024-02-15', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: '1', user_id: 'demo-user-id', titulo_provisorio: 'ML em EaD: uma revisão sistemática', recordatorio: 'Artigo com Ana', autores: ['Ana Mendes', 'João Silva'], resumo: 'Este artigo apresenta uma revisão sistemática sobre o uso de ML em plataformas de ensino a distância.', coluna: 'em_preparacao', ultima_atividade: '2024-03-10', tags: ['revisão', 'ML'], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: '2', user_id: 'demo-user-id', titulo_provisorio: 'Chatbots LLM no Ensino Superior', recordatorio: 'Anpocs 2024', autores: ['Bruno Lima', 'João Silva'], coluna: 'submetido', ultima_atividade: '2024-02-15', prazo: '2026-06-30', tags: ['LLM'], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
   { id: '3', user_id: 'demo-user-id', titulo_provisorio: 'Análise de Sentimentos em Fóruns EaD', autores: ['Carla Nunes', 'João Silva'], coluna: 'em_revisao', ultima_atividade: '2024-01-20', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  { id: '4', user_id: 'demo-user-id', titulo_provisorio: 'Predição de Evasão com Random Forests', autores: ['João Silva'], coluna: 'aceito', ultima_atividade: '2023-12-01', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
+  { id: '4', user_id: 'demo-user-id', titulo_provisorio: 'Predição de Evasão com Random Forests', autores: ['João Silva'], coluna: 'aceito', ultima_atividade: '2023-12-01', prazo: '2026-05-01', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
 ]
 
 const DEMO_EVENTOS: SubmissaoEvento[] = [
@@ -43,24 +63,42 @@ const DEMO_EVENTOS: SubmissaoEvento[] = [
   { id: '2', user_id: 'demo-user-id', submissao_id: '3', tipo: 'revisao', descricao: 'Rodada de revisão iniciada', data: '2024-01-20', revista: 'RBCA', created_at: new Date().toISOString() },
 ]
 
-type SubmissaoForm = { titulo_provisorio: string; autores_str: string; resumo: string; coluna: string }
-const emptyForm: SubmissaoForm = { titulo_provisorio: '', autores_str: '', resumo: '', coluna: 'rascunho' }
+type SubmissaoForm = {
+  titulo_provisorio: string
+  recordatorio: string
+  autores_str: string
+  resumo: string
+  coluna: string
+  prazo: string
+  tags: string[]
+  tagInput: string
+}
+const emptyForm: SubmissaoForm = {
+  titulo_provisorio: '', recordatorio: '', autores_str: '', resumo: '', coluna: 'rascunho', prazo: '', tags: [], tagInput: '',
+}
 
 type EventoForm = { descricao: string; data: string }
 const emptyEventoForm: EventoForm = { descricao: '', data: '' }
+
+function isPrazoPast(prazo: string) {
+  return new Date(prazo) < new Date()
+}
+function isPrazoSoon(prazo: string) {
+  const diff = new Date(prazo).getTime() - Date.now()
+  return diff >= 0 && diff < 7 * 24 * 60 * 60 * 1000
+}
 
 export function Submissoes() {
   const { isDemoMode } = useAuth()
   const { toasts, toast, dismiss } = useToast()
 
   const [submissoes, setSubmissoes] = useState<Submissao[]>(
-    isDemoMode
-      ? DEMO_SUBMISSOES.map(s => ({ ...s, coluna: COLUNA_REMAP[s.coluna] ?? s.coluna }))
-      : []
+    isDemoMode ? DEMO_SUBMISSOES.map(s => ({ ...s, coluna: COLUNA_REMAP[s.coluna] ?? s.coluna })) : []
   )
   const [eventos, setEventos] = useState<SubmissaoEvento[]>(isDemoMode ? DEMO_EVENTOS : [])
   const [loading, setLoading] = useState(!isDemoMode)
   const [showPurgatorio, setShowPurgatorio] = useState(false)
+  const [showPrazos, setShowPrazos] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<Submissao | null>(null)
   const [form, setForm] = useState<SubmissaoForm>(emptyForm)
@@ -71,11 +109,9 @@ export function Submissoes() {
 
   useEffect(() => {
     if (isDemoMode) return
-    loadSubmissoes().then(({ submissoes: s, eventos: e }) => {
-      setSubmissoes(s)
-      setEventos(e)
-      setLoading(false)
-    }).catch(err => { toast({ title: 'Erro ao carregar', description: err.message, variant: 'destructive' }); setLoading(false) })
+    loadSubmissoes()
+      .then(({ submissoes: s, eventos: e }) => { setSubmissoes(s); setEventos(e); setLoading(false) })
+      .catch(err => { toast({ title: 'Erro ao carregar', description: err.message, variant: 'destructive' }); setLoading(false) })
   }, [isDemoMode])
 
   const visibleColunas = COLUNAS.filter(c => !c.hideable || showPurgatorio)
@@ -100,9 +136,13 @@ export function Submissoes() {
     setEditing(s)
     setForm({
       titulo_provisorio: s.titulo_provisorio,
+      recordatorio: s.recordatorio ?? '',
       autores_str: (s.autores ?? []).join('; '),
       resumo: s.resumo ?? '',
       coluna: s.coluna,
+      prazo: s.prazo ?? '',
+      tags: s.tags ?? [],
+      tagInput: '',
     })
     setShowForm(true)
   }
@@ -111,7 +151,16 @@ export function Submissoes() {
     if (!form.titulo_provisorio.trim()) { toast({ title: 'Título obrigatório', variant: 'destructive' }); return }
     const autores = form.autores_str.split(';').map(s => s.trim()).filter(Boolean)
     const today = new Date().toISOString().split('T')[0]
-    const payload = { titulo_provisorio: form.titulo_provisorio, autores, resumo: form.resumo, coluna: form.coluna, ultima_atividade: today }
+    const payload = {
+      titulo_provisorio: form.titulo_provisorio,
+      recordatorio: form.recordatorio.trim() || undefined,
+      autores,
+      resumo: form.resumo,
+      coluna: form.coluna,
+      ultima_atividade: today,
+      prazo: form.prazo || undefined,
+      tags: form.tags.length > 0 ? form.tags : undefined,
+    }
     if (isDemoMode) {
       if (editing) {
         setSubmissoes(prev => prev.map(s => s.id === editing.id ? { ...s, ...payload, updated_at: new Date().toISOString() } : s))
@@ -143,12 +192,7 @@ export function Submissoes() {
   async function handleDelete(id: string) {
     if (!confirm('Remover esta submissão?')) return
     if (isDemoMode) { setSubmissoes(prev => prev.filter(s => s.id !== id)); toast({ title: 'Submissão removida' }); return }
-    try {
-      await deleteSubmissaoFile(id)
-    } catch {
-      toast({ title: 'Erro ao remover', variant: 'destructive' })
-      return
-    }
+    try { await deleteSubmissaoFile(id) } catch { toast({ title: 'Erro ao remover', variant: 'destructive' }); return }
     setSubmissoes(prev => prev.filter(s => s.id !== id))
     toast({ title: 'Submissão removida' })
   }
@@ -156,33 +200,188 @@ export function Submissoes() {
   async function handleSaveEvento() {
     if (!eventoForm.descricao.trim()) { toast({ title: 'Descrição obrigatória', variant: 'destructive' }); return }
     const payload = {
-      tipo: 'registro',
-      descricao: eventoForm.descricao,
-      data: eventoForm.data,
-      submissao_id: currentSubmissaoId!,
-      user_id: isDemoMode ? 'demo-user-id' : 'github-user',
+      tipo: 'registro', descricao: eventoForm.descricao, data: eventoForm.data,
+      submissao_id: currentSubmissaoId!, user_id: isDemoMode ? 'demo-user-id' : 'github-user',
     }
     if (isDemoMode) {
       setEventos(prev => [...prev, { id: Date.now().toString(), ...payload, revista: '', created_at: new Date().toISOString() }])
-      toast({ title: 'Evento registrado' })
-      setShowEventoForm(false)
-      setEventoForm(emptyEventoForm)
-      return
+      toast({ title: 'Evento registrado' }); setShowEventoForm(false); setEventoForm(emptyEventoForm); return
     }
     const novoEvento: SubmissaoEvento = { id: crypto.randomUUID(), ...payload, revista: '', created_at: new Date().toISOString() }
     const updatedEventos = [...eventos, novoEvento]
     const submissao = submissoes.find(s => s.id === currentSubmissaoId!)!
-    try {
-      await saveSubmissaoFile(submissao, updatedEventos)
-    } catch (err: unknown) {
+    try { await saveSubmissaoFile(submissao, updatedEventos) } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Erro desconhecido'
-      toast({ title: 'Erro ao registrar evento', description: msg, variant: 'destructive' })
-      return
+      toast({ title: 'Erro ao registrar evento', description: msg, variant: 'destructive' }); return
     }
     setEventos(updatedEventos)
-    toast({ title: 'Evento registrado' })
-    setShowEventoForm(false)
-    setEventoForm(emptyEventoForm)
+    toast({ title: 'Evento registrado' }); setShowEventoForm(false); setEventoForm(emptyEventoForm)
+  }
+
+  function addTag() {
+    const t = form.tagInput.trim()
+    if (!t || form.tags.includes(t)) { setForm(f => ({ ...f, tagInput: '' })); return }
+    setForm(f => ({ ...f, tags: [...f.tags, t], tagInput: '' }))
+  }
+
+  function removeTag(tag: string) {
+    setForm(f => ({ ...f, tags: f.tags.filter(t => t !== tag) }))
+  }
+
+  // Cards with prazo, sorted ascending
+  const prazosCards = submissoes
+    .filter(s => !!s.prazo)
+    .sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
+
+  function renderCard(s: Submissao, index: number, draggable = true) {
+    const isOpen = expanded === s.id
+    const myEventos = eventos.filter(e => e.submissao_id === s.id)
+    const hasPrazo = !!s.prazo
+    const prazoPast = hasPrazo && isPrazoPast(s.prazo!)
+    const prazoSoon = hasPrazo && !prazoPast && isPrazoSoon(s.prazo!)
+
+    const cardContent = (
+      <div
+        className={`mb-2 bg-white border border-gray-200 rounded-xl shadow-sm transition-shadow ${draggable ? 'hover:shadow-md' : 'shadow-sm'}`}
+        onDoubleClick={(e) => { e.stopPropagation(); openEdit(s) }}
+      >
+        <div className="p-3">
+          {/* Recordatório */}
+          {s.recordatorio && (
+            <p className="text-[10px] text-gray-400 leading-none mb-1 truncate">{s.recordatorio}</p>
+          )}
+
+          {/* Título */}
+          <p className="text-sm font-medium text-gray-900 leading-snug">{s.titulo_provisorio}</p>
+
+          {/* Tags */}
+          {(s.tags ?? []).length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {(s.tags ?? []).map(tag => (
+                <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${tagColor(tag)}`}>
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Autores */}
+          {(s.autores ?? []).length > 0 && (
+            <div className="flex items-center gap-1 mt-1.5">
+              <Users className="w-3 h-3 text-gray-400 flex-shrink-0" />
+              <p className="text-xs text-gray-500 truncate">{(s.autores ?? []).join(', ')}</p>
+            </div>
+          )}
+
+          {/* Prazo ou última atividade */}
+          {hasPrazo ? (
+            <div className="flex items-center gap-1 mt-1">
+              <span className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${prazoPast ? 'bg-red-100 text-red-600' : prazoSoon ? 'bg-orange-100 text-orange-600' : 'bg-red-50 text-red-500'}`}>
+                <AlarmClock className="w-3 h-3" />
+                {formatDate(s.prazo!)}
+              </span>
+            </div>
+          ) : s.ultima_atividade ? (
+            <div className="flex items-center gap-1 mt-1">
+              <Calendar className="w-3 h-3 text-gray-400" />
+              <p className="text-xs text-gray-400">{formatDate(s.ultima_atividade)}</p>
+            </div>
+          ) : null}
+
+          {/* Actions row */}
+          <div className="flex items-center gap-1 mt-2">
+            {myEventos.length > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {myEventos.length} evento{myEventos.length !== 1 ? 's' : ''}
+              </Badge>
+            )}
+            <div className="flex-1" />
+            <button
+              onClick={(e) => { e.stopPropagation(); setCurrentSubmissaoId(s.id); setEventoForm(emptyEventoForm); setShowEventoForm(true) }}
+              className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+              title="Registrar evento"
+            >
+              <CalendarPlus className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); openEdit(s) }}
+              className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+            >
+              <Pencil className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handleDelete(s.id) }}
+              className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); setExpanded(isOpen ? null : s.id) }}
+              className="p-1 hover:bg-gray-100 rounded text-gray-400"
+            >
+              {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+          </div>
+
+          {/* Expanded: description + timeline */}
+          {isOpen && (
+            <div className="mt-2 pt-2 border-t border-gray-100 space-y-2">
+              {/* Resumo/descrição */}
+              {s.resumo && (
+                <p className="text-xs text-gray-500 leading-relaxed">{s.resumo}</p>
+              )}
+
+              {/* Timeline */}
+              {(myEventos.length > 0 || s.created_at) && (
+                <div className="relative pl-4">
+                  {/* Criação como primeiro evento */}
+                  <div className="relative pb-3">
+                    {myEventos.length > 0 && (
+                      <div className="absolute left-[-9px] top-3 bottom-0 w-px bg-gray-200" />
+                    )}
+                    <div className="absolute left-[-13px] top-1.5 w-2 h-2 rounded-full bg-gray-200 border-2 border-white" />
+                    <div className="text-xs">
+                      <span className="text-gray-400 mr-1">{formatDate(s.created_at.split('T')[0])}</span>
+                      <span className="text-gray-400 italic">Registro criado</span>
+                    </div>
+                  </div>
+
+                  {myEventos.map((e, i) => (
+                    <div key={e.id} className="relative pb-3 last:pb-0">
+                      {i < myEventos.length - 1 && (
+                        <div className="absolute left-[-9px] top-3 bottom-0 w-px bg-gray-200" />
+                      )}
+                      <div className="absolute left-[-13px] top-1.5 w-2 h-2 rounded-full bg-purple-300 border-2 border-white" />
+                      <div className="text-xs">
+                        {e.data && <span className="text-gray-400 mr-1">{formatDate(e.data)}</span>}
+                        {e.descricao && <span className="text-gray-600">{e.descricao}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+
+    if (!draggable) return <div key={s.id}>{cardContent}</div>
+
+    return (
+      <Draggable key={s.id} draggableId={s.id} index={index}>
+        {(prov, snap) => (
+          <div
+            ref={prov.innerRef}
+            {...prov.draggableProps}
+            {...prov.dragHandleProps}
+            className={snap.isDragging ? 'ring-2 ring-purple-200 rounded-xl' : ''}
+          >
+            {cardContent}
+          </div>
+        )}
+      </Draggable>
+    )
   }
 
   return (
@@ -200,6 +399,10 @@ export function Submissoes() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={() => setShowPrazos(p => !p)} className={showPrazos ? 'bg-red-50 border-red-200 text-red-600' : ''}>
+            <AlarmClock className="w-4 h-4" />
+            {showPrazos ? 'Ocultar Prazos' : 'Ver Prazos'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowPurgatorio(p => !p)}>
             {showPurgatorio ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             {showPurgatorio ? 'Ocultar Purgatório' : 'Mostrar Purgatório'}
@@ -225,6 +428,41 @@ export function Submissoes() {
           )
         })}
       </div>
+
+      {/* Prazos view */}
+      {showPrazos && (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlarmClock className="w-4 h-4 text-red-500" />
+            <h2 className="text-sm font-semibold text-red-700">Prazos</h2>
+            <span className="text-xs text-red-400">{prazosCards.length} submissão(ões) com prazo</span>
+          </div>
+          {prazosCards.length === 0 ? (
+            <p className="text-xs text-red-400 italic">Nenhuma submissão com prazo definido.</p>
+          ) : (
+            <div className="space-y-2">
+              {prazosCards.map(s => {
+                const past = isPrazoPast(s.prazo!)
+                const soon = !past && isPrazoSoon(s.prazo!)
+                return (
+                  <div key={s.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-red-100">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-full font-semibold flex-shrink-0 ${past ? 'bg-red-100 text-red-600' : soon ? 'bg-orange-100 text-orange-600' : 'bg-red-50 text-red-500'}`}>
+                      {formatDate(s.prazo!)}
+                    </span>
+                    <div className="min-w-0">
+                      {s.recordatorio && <p className="text-[10px] text-gray-400 leading-none mb-0.5">{s.recordatorio}</p>}
+                      <p className="text-sm text-gray-800 truncate font-medium">{s.titulo_provisorio}</p>
+                    </div>
+                    <button onClick={() => openEdit(s)} className="ml-auto p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 flex-shrink-0">
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Kanban */}
       {loading && (
@@ -254,102 +492,7 @@ export function Submissoes() {
                         {...provided.droppableProps}
                         className={`min-h-24 rounded-lg p-1 transition-colors ${snapshot.isDraggingOver ? col.dropBg : 'bg-gray-50/50'}`}
                       >
-                        {cards.map((s, index) => {
-                          const isOpen = expanded === s.id
-                          const myEventos = eventos.filter(e => e.submissao_id === s.id)
-                          return (
-                            <Draggable key={s.id} draggableId={s.id} index={index}>
-                              {(prov, snap) => (
-                                <div
-                                  ref={prov.innerRef}
-                                  {...prov.draggableProps}
-                                  {...prov.dragHandleProps}
-                                  className={`mb-2 bg-white border border-gray-200 rounded-xl shadow-sm transition-shadow ${snap.isDragging ? 'shadow-lg ring-2 ring-purple-200' : 'hover:shadow-md'}`}
-                                >
-                                  <div className="p-3">
-                                    <p className="text-sm font-medium text-gray-900 leading-snug">
-                                      {s.titulo_provisorio}
-                                    </p>
-                                    {(s.autores ?? []).length > 0 && (
-                                      <div className="flex items-center gap-1 mt-1.5">
-                                        <Users className="w-3 h-3 text-gray-400" />
-                                        <p className="text-xs text-gray-500 truncate">
-                                          {(s.autores ?? []).join(', ')}
-                                        </p>
-                                      </div>
-                                    )}
-                                    {s.ultima_atividade && (
-                                      <div className="flex items-center gap-1 mt-1">
-                                        <Calendar className="w-3 h-3 text-gray-400" />
-                                        <p className="text-xs text-gray-400">{formatDate(s.ultima_atividade)}</p>
-                                      </div>
-                                    )}
-                                    <div className="flex items-center gap-1 mt-2">
-                                      {myEventos.length > 0 && (
-                                        <Badge variant="outline" className="text-xs">
-                                          {myEventos.length} evento{myEventos.length !== 1 ? 's' : ''}
-                                        </Badge>
-                                      )}
-                                      <div className="flex-1" />
-                                      <button
-                                        onClick={() => {
-                                          setCurrentSubmissaoId(s.id)
-                                          setEventoForm(emptyEventoForm)
-                                          setShowEventoForm(true)
-                                        }}
-                                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
-                                        title="Registrar evento"
-                                      >
-                                        <CalendarPlus className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        onClick={() => openEdit(s)}
-                                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
-                                      >
-                                        <Pencil className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDelete(s.id)}
-                                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-red-500"
-                                      >
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
-                                      <button
-                                        onClick={() => setExpanded(isOpen ? null : s.id)}
-                                        className="p-1 hover:bg-gray-100 rounded text-gray-400"
-                                      >
-                                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                                      </button>
-                                    </div>
-
-                                    {isOpen && myEventos.length > 0 && (
-                                      <div className="mt-2 pt-2 border-t border-gray-100">
-                                        <div className="relative pl-4">
-                                          {myEventos.map((e, i) => (
-                                            <div key={e.id} className="relative pb-3 last:pb-0">
-                                              {i < myEventos.length - 1 && (
-                                                <div className="absolute left-[-9px] top-3 bottom-0 w-px bg-gray-200" />
-                                              )}
-                                              <div className="absolute left-[-13px] top-1.5 w-2 h-2 rounded-full bg-purple-300 border-2 border-white" />
-                                              <div className="text-xs">
-                                                {e.data && (
-                                                  <span className="text-gray-400 mr-1">{formatDate(e.data)}</span>
-                                                )}
-                                                {e.descricao && (
-                                                  <span className="text-gray-600">{e.descricao}</span>
-                                                )}
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </Draggable>
-                          )
-                        })}
+                        {cards.map((s, index) => renderCard(s, index, true))}
                         {provided.placeholder}
                       </div>
                     )}
@@ -370,38 +513,62 @@ export function Submissoes() {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label>Título Provisório *</Label>
-              <Input
-                value={form.titulo_provisorio}
-                onChange={e => setForm(f => ({ ...f, titulo_provisorio: e.target.value }))}
-                placeholder="Título do artigo"
-              />
+              <Input value={form.titulo_provisorio} onChange={e => setForm(f => ({ ...f, titulo_provisorio: e.target.value }))} placeholder="Título do artigo" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Recordatório</Label>
+              <Input value={form.recordatorio} onChange={e => setForm(f => ({ ...f, recordatorio: e.target.value }))} placeholder="Ex.: Artigo com Fulano, Anpocs 2020…" />
             </div>
             <div className="space-y-1.5">
               <Label>Autores (separados por ponto e vírgula)</Label>
-              <Input
-                value={form.autores_str}
-                onChange={e => setForm(f => ({ ...f, autores_str: e.target.value }))}
-                placeholder="Autor A; Autor B; Autor C"
-              />
+              <Input value={form.autores_str} onChange={e => setForm(f => ({ ...f, autores_str: e.target.value }))} placeholder="Autor A; Autor B; Autor C" />
             </div>
             <div className="space-y-1.5">
               <Label>Resumo</Label>
-              <Textarea
-                value={form.resumo}
-                onChange={e => setForm(f => ({ ...f, resumo: e.target.value }))}
-                rows={3}
-                placeholder="Resumo do artigo..."
-              />
+              <Textarea value={form.resumo} onChange={e => setForm(f => ({ ...f, resumo: e.target.value }))} rows={3} placeholder="Resumo do artigo..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Coluna Inicial</Label>
+                <select
+                  value={form.coluna}
+                  onChange={e => setForm(f => ({ ...f, coluna: e.target.value }))}
+                  className="flex h-9 w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                >
+                  {COLUNAS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Prazo</Label>
+                <Input type="date" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Coluna Inicial</Label>
-              <select
-                value={form.coluna}
-                onChange={e => setForm(f => ({ ...f, coluna: e.target.value }))}
-                className="flex h-9 w-full rounded-md border border-gray-200 bg-white px-3 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              >
-                {COLUNAS.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-              </select>
+              <Label>Tags</Label>
+              <div className="flex gap-2">
+                <Input
+                  value={form.tagInput}
+                  onChange={e => setForm(f => ({ ...f, tagInput: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
+                  placeholder="Adicionar tag… (Enter)"
+                  className="flex-1"
+                />
+                <Button type="button" variant="outline" size="sm" onClick={addTag}>
+                  <Tag className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+              {form.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {form.tags.map(tag => (
+                    <span key={tag} className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${tagColor(tag)}`}>
+                      {tag}
+                      <button onClick={() => removeTag(tag)} className="hover:opacity-70">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter>
@@ -421,20 +588,11 @@ export function Submissoes() {
             <div className="space-y-1.5">
               <Label>Descrição *</Label>
               <p className="text-xs text-gray-400 mt-0.5">Ex.: Submetido ao Periódico A, Recusado no Congresso B</p>
-              <Textarea
-                value={eventoForm.descricao}
-                onChange={e => setEventoForm(f => ({ ...f, descricao: e.target.value }))}
-                rows={3}
-                placeholder="Descreva o evento..."
-              />
+              <Textarea value={eventoForm.descricao} onChange={e => setEventoForm(f => ({ ...f, descricao: e.target.value }))} rows={3} placeholder="Descreva o evento..." />
             </div>
             <div className="space-y-1.5">
               <Label>Data</Label>
-              <Input
-                type="date"
-                value={eventoForm.data}
-                onChange={e => setEventoForm(f => ({ ...f, data: e.target.value }))}
-              />
+              <Input type="date" value={eventoForm.data} onChange={e => setEventoForm(f => ({ ...f, data: e.target.value }))} />
             </div>
           </div>
           <DialogFooter>

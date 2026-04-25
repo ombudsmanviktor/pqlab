@@ -245,10 +245,13 @@ export interface Submissao {
   id: string
   user_id: string
   titulo_provisorio: string
+  recordatorio?: string
   autores?: string[]
   resumo?: string
   coluna: string
   ultima_atividade?: string
+  prazo?: string
+  tags?: string[]
   created_at: string
   updated_at: string
 }
@@ -283,6 +286,7 @@ export interface OrdemDoDia {
   meeting_date?: string   // YYYY-MM-DD, opcional
   pautas: Pauta[]
   ata: Ata
+  archived?: boolean
   created_at: string
   updated_at: string
 }
