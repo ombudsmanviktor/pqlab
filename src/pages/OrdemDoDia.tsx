@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   ClipboardList, Plus, Trash2, GripVertical, ChevronDown, ChevronUp, Calendar, Archive, ArchiveRestore,
+  Download, FileText, FileDown, FileImage,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +50,177 @@ const DEMO: OrdemDoDia[] = [
     updated_at: '2026-02-20T10:00:00Z',
   },
 ]
+
+// ─── Export utilities ─────────────────────────────────────────────────────
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
+}
+
+function exportFilename(item: OrdemDoDia, ext: string): string {
+  const date = item.meeting_date ?? item.created_at.split('T')[0]
+  const slug = item.title
+    .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '').slice(0, 40)
+  return `ordem-do-dia-${date}-${slug}.${ext}`
+}
+
+function exportToMarkdown(item: OrdemDoDia) {
+  const dateStr = item.meeting_date ? `\n**Data:** ${formatDate(item.meeting_date)}` : ''
+  const pautas = item.pautas.map((p, i) => `${i + 1}. ${p.title}`).join('\n')
+  const ata = item.ata.content.trim()
+    ? `\n---\n\n## Ata da Reunião\n\n${item.ata.content}` : ''
+  const md = `# ${item.title}${dateStr}\n\n## Pauta\n\n${pautas}${ata}\n`
+  downloadBlob(new Blob([md], { type: 'text/markdown; charset=utf-8' }), exportFilename(item, 'md'))
+}
+
+function exportToPdf(item: OrdemDoDia) {
+  import('jspdf').then(({ jsPDF }) => {
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+    const ml = 20, mr = 20
+    const pw = doc.internal.pageSize.getWidth()
+    const mw = pw - ml - mr
+    let y = 0
+
+    // Violet header
+    doc.setFillColor(124, 58, 237)
+    doc.rect(0, 0, pw, 14, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(8); doc.setFont('helvetica', 'normal')
+    doc.text('pqLAB · coLAB/UFF · Ordem do Dia', ml, 9)
+    y = 26
+
+    // Title
+    doc.setTextColor(30, 27, 75); doc.setFontSize(20); doc.setFont('helvetica', 'bold')
+    const titleLines = doc.splitTextToSize(item.title, mw) as string[]
+    doc.text(titleLines, ml, y); y += titleLines.length * 8 + 2
+
+    // Date
+    if (item.meeting_date) {
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal')
+      doc.setTextColor(124, 58, 237)
+      doc.text(formatDate(item.meeting_date), ml, y); y += 7
+    }
+
+    // Divider
+    y += 4; doc.setDrawColor(221, 214, 254); doc.setLineWidth(0.5)
+    doc.line(ml, y, pw - mr, y); y += 8
+
+    // Pautas
+    doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(109, 40, 217)
+    doc.text('PAUTA', ml, y); y += 6
+    for (const [i, p] of item.pautas.entries()) {
+      doc.setFontSize(11); doc.setFont('helvetica', 'normal'); doc.setTextColor(31, 41, 55)
+      const lines = doc.splitTextToSize(`${i + 1}.   ${p.title}`, mw) as string[]
+      doc.text(lines, ml, y); y += lines.length * 5.5 + 2
+    }
+
+    // Ata
+    if (item.ata.content.trim()) {
+      y += 6; doc.setDrawColor(221, 214, 254); doc.line(ml, y, pw - mr, y); y += 8
+      doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(109, 40, 217)
+      doc.text('ATA DA REUNIÃO', ml, y); y += 6
+      const plain = item.ata.content
+        .replace(/^#{1,6}\s+/gm, '').replace(/\*\*(.*?)\*\*/g, '$1')
+        .replace(/\*(.*?)\*/g, '$1').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(55, 65, 81)
+      const ataLines = doc.splitTextToSize(plain, mw) as string[]
+      doc.text(ataLines, ml, y)
+    }
+
+    doc.save(exportFilename(item, 'pdf'))
+  }).catch(() => alert('Erro ao gerar PDF.'))
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const words = text.split(' ')
+  const lines: string[] = []; let line = ''
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word
+    if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word }
+    else line = test
+  }
+  if (line) lines.push(line)
+  return lines.length ? lines : ['']
+}
+
+function exportToPng(item: OrdemDoDia) {
+  const S = 1600 // renders at 2x for sharpness; output PNG is 1600×1600 (sharp on any screen)
+  const canvas = document.createElement('canvas')
+  canvas.width = S; canvas.height = S
+  const ctx = canvas.getContext('2d')!
+  const pad = 72, r = 36
+
+  // Background gradient
+  const bg = ctx.createLinearGradient(0, 0, 0, S)
+  bg.addColorStop(0, '#f5f3ff'); bg.addColorStop(1, '#ddd6fe')
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, S, S)
+
+  // Card (white, with shadow)
+  ctx.shadowColor = 'rgba(109,40,217,0.18)'; ctx.shadowBlur = 64; ctx.shadowOffsetY = 16
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath(); ctx.roundRect(pad, pad, S - pad * 2, S - pad * 2, r); ctx.fill()
+  ctx.shadowColor = 'transparent'
+
+  const cx = pad, cy = pad, cw = S - pad * 2, ch = S - pad * 2
+
+  // Top bar
+  ctx.fillStyle = '#7c3aed'
+  ctx.beginPath(); ctx.roundRect(cx, cy, cw, 18, [r, r, 0, 0]); ctx.fill()
+
+  let y = cy + 74
+
+  // App label
+  ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 24px system-ui,sans-serif'
+  ctx.fillText('pqLAB · coLAB/UFF', cx + 56, y); y += 52
+
+  // Title
+  ctx.fillStyle = '#1e1b4b'; ctx.font = 'bold 56px system-ui,sans-serif'
+  const titleLines = wrapText(ctx, item.title, cw - 112)
+  for (const line of titleLines.slice(0, 3)) { ctx.fillText(line, cx + 56, y); y += 68 }
+  y += 8
+
+  // Date
+  if (item.meeting_date) {
+    ctx.fillStyle = '#7c3aed'; ctx.font = '32px system-ui,sans-serif'
+    ctx.fillText(formatDate(item.meeting_date), cx + 56, y); y += 56
+  }
+
+  // Divider
+  y += 16; ctx.strokeStyle = '#ddd6fe'; ctx.lineWidth = 2
+  ctx.beginPath(); ctx.moveTo(cx + 56, y); ctx.lineTo(cx + cw - 56, y); ctx.stroke(); y += 36
+
+  // PAUTA label
+  ctx.fillStyle = '#6d28d9'; ctx.font = 'bold 24px system-ui,sans-serif'
+  ctx.fillText('PAUTA', cx + 56, y); y += 42
+
+  // Pauta items
+  const maxItemY = cy + ch - 80
+  for (const [i, p] of item.pautas.entries()) {
+    if (y > maxItemY) {
+      ctx.fillStyle = '#9ca3af'; ctx.font = '28px system-ui,sans-serif'
+      ctx.fillText(`… mais ${item.pautas.length - i} item(ns)`, cx + 56, y); break
+    }
+    ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 32px system-ui,sans-serif'
+    ctx.fillText(`${i + 1}.`, cx + 56, y)
+    ctx.fillStyle = '#1f2937'; ctx.font = '32px system-ui,sans-serif'
+    const lines = wrapText(ctx, p.title, cw - 172)
+    for (const [li, ln] of lines.entries()) ctx.fillText(ln, cx + 108, y + li * 40)
+    y += lines.length * 40 + 18
+  }
+
+  // Footer bar
+  const fh = 64
+  ctx.fillStyle = '#7c3aed'
+  ctx.beginPath(); ctx.roundRect(cx, cy + ch - fh, cw, fh, [0, 0, r, r]); ctx.fill()
+  ctx.fillStyle = 'rgba(255,255,255,0.88)'; ctx.font = '24px system-ui,sans-serif'
+  ctx.fillText('Ordem do Dia · pqLAB', cx + 52, cy + ch - fh + 40)
+
+  canvas.toBlob(blob => { if (blob) downloadBlob(blob, exportFilename(item, 'png')) }, 'image/png')
+}
 
 // ─── AtaSection ───────────────────────────────────────────────────────────
 
@@ -181,6 +353,17 @@ function OrdemDoDiaCard({
   const [current, setCurrent] = useState<OrdemDoDia>(item)
   const [titleDraft, setTitleDraft] = useState(item.title)
   const [newPautaId, setNewPautaId] = useState<string | null>(null)
+  const [exportOpen, setExportOpen] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!exportOpen) return
+    function handleClick(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [exportOpen])
 
   function save(updated: OrdemDoDia) {
     setCurrent(updated)
@@ -278,6 +461,38 @@ function OrdemDoDiaCard({
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+          {/* Export dropdown */}
+          <div ref={exportRef} className="relative">
+            <button
+              onClick={() => setExportOpen(o => !o)}
+              className="opacity-0 group-hover/card:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-violet-50 text-gray-300 hover:text-violet-500 transition-all"
+              title="Exportar"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+            {exportOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1.5 min-w-[140px]">
+                <button
+                  onClick={() => { exportToMarkdown(current); setExportOpen(false) }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5 text-gray-400" /> Markdown
+                </button>
+                <button
+                  onClick={() => { exportToPdf(current); setExportOpen(false) }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FileDown className="w-3.5 h-3.5 text-gray-400" /> PDF
+                </button>
+                <button
+                  onClick={() => { exportToPng(current); setExportOpen(false) }}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                  <FileImage className="w-3.5 h-3.5 text-gray-400" /> PNG (card)
+                </button>
+              </div>
+            )}
+          </div>
           <button
             onClick={() => onArchive(item.id)}
             className="opacity-0 group-hover/card:opacity-60 hover:!opacity-100 p-1.5 rounded hover:bg-amber-50 text-gray-300 hover:text-amber-500 transition-all"
