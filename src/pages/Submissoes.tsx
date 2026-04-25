@@ -115,7 +115,7 @@ export function Submissoes() {
   const archivedCards = submissoes.filter(s => s.archived)
   const prazosCards = submissoes.filter(s => !!s.prazo && !s.archived).sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
 
-  function sortedColCards(colId: string, excludeId?: string) {
+  function colSorted(colId: string, excludeId?: string) {
     return submissoes
       .filter(s => s.coluna === colId && !s.archived && s.id !== excludeId)
       .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.created_at.localeCompare(b.created_at))
@@ -130,22 +130,34 @@ export function Submissoes() {
     const today = new Date().toISOString().split('T')[0]
     const dragged = submissoes.find(s => s.id === draggableId)!
 
-    // Build new dest column order (insert dragged at dest index)
-    const destCards = sortedColCards(newColuna, draggableId)
-    destCards.splice(destination.index, 0, { ...dragged, coluna: newColuna, ultima_atividade: today })
-    const reorderedDest = destCards.map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
+    // Build destination column order with the dragged card inserted at destination index
+    const destList = colSorted(newColuna, draggableId)
+    destList.splice(destination.index, 0, { ...dragged, coluna: newColuna, ultima_atividade: today })
+    const reorderedDest = destList.map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
 
-    // Re-index source column if cross-column move
-    const reorderedSrc = source.droppableId !== newColuna
-      ? sortedColCards(source.droppableId, draggableId).map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
-      : []
+    // Re-index source column on cross-column move
+    const reorderedSrc =
+      source.droppableId !== newColuna
+        ? colSorted(source.droppableId, draggableId).map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
+        : []
 
     const changed = [...reorderedDest, ...reorderedSrc]
-    const changedIds = new Set(changed.map(s => s.id))
-    setSubmissoes(prev => [...prev.filter(s => !changedIds.has(s.id)), ...changed])
+    const changedMap = new Map(changed.map(s => [s.id, s]))
+
+    // Replace each changed card in-place (preserves array order for other cards)
+    setSubmissoes(prev => prev.map(s => changedMap.get(s.id) ?? s))
 
     if (!isDemoMode) {
-      changed.forEach(s => saveSubmissaoFile(s, eventos).catch(() => {}))
+      // Sequential saves prevent GitHub abuse-rate-limiting on burst writes
+      ;(async () => {
+        for (const s of changed) {
+          try { await saveSubmissaoFile(s, eventos) }
+          catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Erro desconhecido'
+            toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' })
+          }
+        }
+      })()
     }
   }
 
@@ -495,7 +507,7 @@ export function Submissoes() {
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 min-w-max">
             {visibleColunas.map(col => {
-              const cards = sortedColCards(col.id)
+              const cards = colSorted(col.id)
               return (
                 <div key={col.id} className="w-72 flex-shrink-0">
                   <div className={`flex items-center justify-between px-3 py-2 rounded-lg mb-2 ${col.headerBg}`}>
