@@ -254,6 +254,7 @@ export interface Submissao {
   autores?: string[]
   resumo?: string
   coluna: string
+  order?: number
   ultima_atividade?: string
   prazo?: string
   tags?: string[]

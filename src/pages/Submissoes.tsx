@@ -115,16 +115,37 @@ export function Submissoes() {
   const archivedCards = submissoes.filter(s => s.archived)
   const prazosCards = submissoes.filter(s => !!s.prazo && !s.archived).sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
 
+  function sortedColCards(colId: string, excludeId?: string) {
+    return submissoes
+      .filter(s => s.coluna === colId && !s.archived && s.id !== excludeId)
+      .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.created_at.localeCompare(b.created_at))
+  }
+
   function onDragEnd(result: DropResult) {
     if (!result.destination) return
-    const { draggableId, destination } = result
+    const { draggableId, source, destination } = result
+    if (source.droppableId === destination.droppableId && source.index === destination.index) return
+
     const newColuna = destination.droppableId
     const today = new Date().toISOString().split('T')[0]
-    const updated = submissoes.map(s => s.id === draggableId ? { ...s, coluna: newColuna, ultima_atividade: today } : s)
-    setSubmissoes(updated)
+    const dragged = submissoes.find(s => s.id === draggableId)!
+
+    // Build new dest column order (insert dragged at dest index)
+    const destCards = sortedColCards(newColuna, draggableId)
+    destCards.splice(destination.index, 0, { ...dragged, coluna: newColuna, ultima_atividade: today })
+    const reorderedDest = destCards.map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
+
+    // Re-index source column if cross-column move
+    const reorderedSrc = source.droppableId !== newColuna
+      ? sortedColCards(source.droppableId, draggableId).map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
+      : []
+
+    const changed = [...reorderedDest, ...reorderedSrc]
+    const changedIds = new Set(changed.map(s => s.id))
+    setSubmissoes(prev => [...prev.filter(s => !changedIds.has(s.id)), ...changed])
+
     if (!isDemoMode) {
-      const updatedS = updated.find(s => s.id === draggableId)!
-      saveSubmissaoFile(updatedS, eventos).catch(() => {})
+      changed.forEach(s => saveSubmissaoFile(s, eventos).catch(() => {}))
     }
   }
 
@@ -474,7 +495,7 @@ export function Submissoes() {
         <DragDropContext onDragEnd={onDragEnd}>
           <div className="flex gap-4 min-w-max">
             {visibleColunas.map(col => {
-              const cards = submissoes.filter(s => s.coluna === col.id && !s.archived)
+              const cards = sortedColCards(col.id)
               return (
                 <div key={col.id} className="w-72 flex-shrink-0">
                   <div className={`flex items-center justify-between px-3 py-2 rounded-lg mb-2 ${col.headerBg}`}>
