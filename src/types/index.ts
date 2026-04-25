@@ -241,6 +241,11 @@ export interface ListaSimples {
 
 // ─── Módulo Submissões ────────────────────────────────────────────────────
 
+export interface SubmissaoRecurso {
+  titulo: string
+  url: string
+}
+
 export interface Submissao {
   id: string
   user_id: string
@@ -252,6 +257,9 @@ export interface Submissao {
   ultima_atividade?: string
   prazo?: string
   tags?: string[]
+  archived?: boolean
+  starred?: boolean
+  recursos?: SubmissaoRecurso[]
   created_at: string
   updated_at: string
 }
