@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   Plus, Kanban, Pencil, Trash2, Calendar, Users, ChevronDown, ChevronUp,
@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/useToast'
-import { loadSubmissoes, saveSubmissaoFile, deleteSubmissaoFile } from '@/lib/storage'
+import { loadSubmissoes, loadSubmissaoOrder, saveSubmissaoFile, saveSubmissaoOrder, deleteSubmissaoFile } from '@/lib/storage'
 import { formatDate } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -85,6 +85,8 @@ export function Submissoes() {
     isDemoMode ? DEMO_SUBMISSOES.map(s => ({ ...s, coluna: COLUNA_REMAP[s.coluna] ?? s.coluna })) : []
   )
   const [eventos, setEventos] = useState<SubmissaoEvento[]>(isDemoMode ? DEMO_EVENTOS : [])
+  const [columnOrder, setColumnOrder] = useState<Record<string, string[]>>({})
+  const orderSavePending = useRef<Promise<void>>(Promise.resolve())
   const [loading, setLoading] = useState(!isDemoMode)
   const [showPurgatorio, setShowPurgatorio] = useState(false)
   const [showPrazos, setShowPrazos] = useState(false)
@@ -100,8 +102,10 @@ export function Submissoes() {
 
   useEffect(() => {
     if (isDemoMode) return
-    loadSubmissoes()
-      .then(({ submissoes: s, eventos: e }) => { setSubmissoes(s); setEventos(e); setLoading(false) })
+    Promise.all([loadSubmissoes(), loadSubmissaoOrder()])
+      .then(([{ submissoes: s, eventos: e }, order]) => {
+        setSubmissoes(s); setEventos(e); setColumnOrder(order); setLoading(false)
+      })
       .catch(err => { toast({ title: 'Erro ao carregar', description: err.message, variant: 'destructive' }); setLoading(false) })
   }, [isDemoMode])
 
@@ -116,9 +120,29 @@ export function Submissoes() {
   const prazosCards = submissoes.filter(s => !!s.prazo && !s.archived).sort((a, b) => (a.prazo ?? '').localeCompare(b.prazo ?? ''))
 
   function colSorted(colId: string, excludeId?: string) {
-    return submissoes
-      .filter(s => s.coluna === colId && !s.archived && s.id !== excludeId)
-      .sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.created_at.localeCompare(b.created_at))
+    const cards = submissoes.filter(s => s.coluna === colId && !s.archived && s.id !== excludeId)
+    const idOrder = columnOrder[colId]
+    if (idOrder?.length) {
+      const pos = new Map(idOrder.map((id, i) => [id, i]))
+      return cards.sort((a, b) =>
+        (pos.get(a.id) ?? Infinity) - (pos.get(b.id) ?? Infinity) ||
+        a.created_at.localeCompare(b.created_at)
+      )
+    }
+    // Fallback for cards with no saved order: use legacy `order` field or created_at
+    return cards.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity) || a.created_at.localeCompare(b.created_at))
+  }
+
+  function persistOrder(newOrder: Record<string, string[]>) {
+    if (isDemoMode) return
+    // Chain saves so rapid drags never race on the same file
+    orderSavePending.current = orderSavePending.current
+      .catch(() => {})
+      .then(() => saveSubmissaoOrder(newOrder))
+      .catch(err => {
+        const msg = err instanceof Error ? err.message : 'Erro'
+        toast({ title: 'Erro ao salvar ordem', description: msg, variant: 'destructive' })
+      })
   }
 
   function onDragEnd(result: DropResult) {
@@ -126,39 +150,41 @@ export function Submissoes() {
     const { draggableId, source, destination } = result
     if (source.droppableId === destination.droppableId && source.index === destination.index) return
 
-    const newColuna = destination.droppableId
+    const srcCol = source.droppableId
+    const destCol = destination.droppableId
     const today = new Date().toISOString().split('T')[0]
-    const dragged = submissoes.find(s => s.id === draggableId)!
 
-    // Build destination column order with the dragged card inserted at destination index
-    const destList = colSorted(newColuna, draggableId)
-    destList.splice(destination.index, 0, { ...dragged, coluna: newColuna, ultima_atividade: today })
-    const reorderedDest = destList.map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
+    const srcIds = colSorted(srcCol).map(s => s.id)
+    const newSrcIds = srcIds.filter(id => id !== draggableId)
 
-    // Re-index source column on cross-column move
-    const reorderedSrc =
-      source.droppableId !== newColuna
-        ? colSorted(source.droppableId, draggableId).map((s, i) => ({ ...s, order: (i + 1) * 1000 }))
-        : []
+    let newOrder: Record<string, string[]>
 
-    const changed = [...reorderedDest, ...reorderedSrc]
-    const changedMap = new Map(changed.map(s => [s.id, s]))
+    if (srcCol === destCol) {
+      newSrcIds.splice(destination.index, 0, draggableId)
+      newOrder = { ...columnOrder, [srcCol]: newSrcIds }
+    } else {
+      const destIds = colSorted(destCol).map(s => s.id)
+      const newDestIds = destIds.filter(id => id !== draggableId)
+      newDestIds.splice(destination.index, 0, draggableId)
+      newOrder = { ...columnOrder, [srcCol]: newSrcIds, [destCol]: newDestIds }
 
-    // Replace each changed card in-place (preserves array order for other cards)
-    setSubmissoes(prev => prev.map(s => changedMap.get(s.id) ?? s))
-
-    if (!isDemoMode) {
-      // Sequential saves prevent GitHub abuse-rate-limiting on burst writes
-      ;(async () => {
-        for (const s of changed) {
-          try { await saveSubmissaoFile(s, eventos) }
-          catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Erro desconhecido'
-            toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' })
-          }
-        }
-      })()
+      // Update the card's coluna (single file save, no SHA conflict with order file)
+      const updatedCard = {
+        ...submissoes.find(s => s.id === draggableId)!,
+        coluna: destCol,
+        ultima_atividade: today,
+      }
+      setSubmissoes(prev => prev.map(s => s.id === draggableId ? updatedCard : s))
+      if (!isDemoMode) {
+        saveSubmissaoFile(updatedCard, eventos).catch(err => {
+          const msg = err instanceof Error ? err.message : 'Erro'
+          toast({ title: 'Erro ao salvar', description: msg, variant: 'destructive' })
+        })
+      }
     }
+
+    setColumnOrder(newOrder)
+    persistOrder(newOrder)
   }
 
   function openNew() { setEditing(null); setForm(emptyForm); setIsSubmitting(false); setShowForm(true) }

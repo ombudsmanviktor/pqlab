@@ -389,11 +389,24 @@ type StoredSubmissao = Omit<Submissao, 'user_id'> & {
 
 const GH_USER_SUB = 'github-user'
 
+export async function loadSubmissaoOrder(): Promise<Record<string, string[]>> {
+  try {
+    const result = await readYaml<Record<string, string[]>>('data/submissoes/_order.yaml')
+    return result ?? {}
+  } catch {
+    return {}
+  }
+}
+
+export async function saveSubmissaoOrder(order: Record<string, string[]>): Promise<void> {
+  await writeYaml('data/submissoes/_order.yaml', order, 'Update submissao column order')
+}
+
 export async function loadSubmissoes(): Promise<{
   submissoes: Submissao[]
   eventos: SubmissaoEvento[]
 }> {
-  const files = await listYamls('data/submissoes')
+  const files = (await listYamls('data/submissoes')).filter(f => !f.includes('_order'))
   const docs = await Promise.all(files.map((f) => readYaml<StoredSubmissao>(f)))
 
   const submissoes: Submissao[] = []
