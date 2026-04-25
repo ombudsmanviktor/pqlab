@@ -40,6 +40,7 @@ export function isGitHubConfigured(): boolean {
 
 async function ghFetch<T>(cfg: GitHubConfig, path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`https://api.github.com${path}`, {
+    cache: 'no-store',
     ...options,
     headers: {
       Authorization: `Bearer ${cfg.token}`,
