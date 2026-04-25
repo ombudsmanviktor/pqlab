@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   Plus, Kanban, Pencil, Trash2, Calendar, Users, ChevronDown, ChevronUp,
-  Eye, EyeOff, CalendarPlus, Clock, Tag, X, AlarmClock,
+  Eye, EyeOff, CalendarPlus, Tag, X, AlarmClock,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/hooks/useToast'
