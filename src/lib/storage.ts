@@ -479,7 +479,12 @@ export async function loadProximasLeituras(): Promise<ProximasLeituras[]> {
         attachment: item.attachment ? storedToAnexo(item.attachment) : undefined,
       })),
     }))
-    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    .sort((a, b) => {
+      if (a.order !== undefined && b.order !== undefined) return a.order - b.order
+      if (a.order !== undefined) return -1
+      if (b.order !== undefined) return 1
+      return (b.created_at ?? '').localeCompare(a.created_at ?? '')
+    })
 }
 
 export async function saveProximasLeituras(lista: ProximasLeituras): Promise<void> {

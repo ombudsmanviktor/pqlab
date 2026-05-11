@@ -294,6 +294,8 @@ export interface ProximasLeiturasItem {
   pages?: string
   doi?: string
   url?: string
+  // Anotações
+  description?: string    // markdown — notas/resumo sobre a leitura
   // Arquivo
   attachment?: Anexo
   created_at: string
@@ -302,6 +304,7 @@ export interface ProximasLeiturasItem {
 export interface ProximasLeituras {
   id: string
   name: string
+  order?: number          // posição na lista de cards (para reordenação)
   items: ProximasLeiturasItem[]
   created_at: string
   updated_at: string
