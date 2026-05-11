@@ -7,6 +7,7 @@
 //   data/planos/{id}.yaml
 //   data/listas/{id}.yaml
 //   data/revisoes/{id}.yaml
+//   data/proximasleituras/{id}.yaml
 //   attachments/{module}/{id}/{filename}
 
 import { load as yamlLoad, dump as yamlDump } from 'js-yaml'
@@ -33,7 +34,8 @@ import type {
   Anexo,
   Submissao,
   SubmissaoEvento,
-  OrdemDoDia,
+  ProximasLeituras,
+  ProximasLeiturasItem,
 } from '@/types'
 
 // ─── SHA cache ────────────────────────────────────────────────────────────
@@ -454,26 +456,44 @@ export async function deleteSubmissaoFile(id: string): Promise<void> {
   await deleteYaml(`data/submissoes/${id}.yaml`, `Delete submissao ${id}`)
 }
 
-// ─── ORDEM DO DIA ─────────────────────────────────────────────────────────
+// ─── PRÓXIMAS LEITURAS ────────────────────────────────────────────────────
 
-export async function loadOrdemDoDias(): Promise<OrdemDoDia[]> {
-  const files = await listYamls('data/ordemdia')
+type StoredProximasLeiturasItem = Omit<ProximasLeiturasItem, 'attachment'> & {
+  attachment?: StoredAnexo
+}
+
+type StoredProximasLeituras = Omit<ProximasLeituras, 'items'> & {
+  items: StoredProximasLeiturasItem[]
+}
+
+export async function loadProximasLeituras(): Promise<ProximasLeituras[]> {
+  const files = await listYamls('data/proximasleituras')
   if (files.length === 0) return []
-  const docs = await Promise.all(files.map((f) => readYaml<OrdemDoDia>(f)))
-  return docs
-    .map((o) => ({
-      ...o,
-      pautas: o.pautas ?? [],
-      ata: o.ata ?? { content: '', updated_at: '' },
+  const results = await Promise.allSettled(files.map((f) => readYaml<StoredProximasLeituras>(f)))
+  return results
+    .filter((r): r is PromiseFulfilledResult<StoredProximasLeituras> => r.status === 'fulfilled')
+    .map((r) => ({
+      ...r.value,
+      items: (r.value.items ?? []).map((item) => ({
+        ...item,
+        attachment: item.attachment ? storedToAnexo(item.attachment) : undefined,
+      })),
     }))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
 }
 
-export async function saveOrdemDoDia(o: OrdemDoDia): Promise<void> {
-  const doc = { ...o, updated_at: new Date().toISOString() }
-  await writeYaml(`data/ordemdia/${o.id}.yaml`, doc, `Update ordemdia ${o.id}`)
+export async function saveProximasLeituras(lista: ProximasLeituras): Promise<void> {
+  const doc: StoredProximasLeituras = {
+    ...lista,
+    updated_at: new Date().toISOString(),
+    items: lista.items.map((item) => ({
+      ...item,
+      attachment: item.attachment ? anexoToStored(item.attachment) : undefined,
+    })),
+  }
+  await writeYaml(`data/proximasleituras/${lista.id}.yaml`, doc, `Update proximasleituras ${lista.id}`)
 }
 
-export async function deleteOrdemDoDia(id: string): Promise<void> {
-  await deleteYaml(`data/ordemdia/${id}.yaml`, `Delete ordemdia ${id}`)
+export async function deleteProximasLeituras(id: string): Promise<void> {
+  await deleteYaml(`data/proximasleituras/${id}.yaml`, `Delete proximasleituras ${id}`)
 }

@@ -276,26 +276,33 @@ export interface SubmissaoEvento {
   created_at: string
 }
 
-// ─── Módulo Ordem do Dia ──────────────────────────────────────────────────
+// ─── Módulo Próximas Leituras ─────────────────────────────────────────────
 
-export interface Pauta {
+export type ProximasLeiturasItemPriority = 'urgente' | 'normal' | 'nao-urgente'
+
+export interface ProximasLeiturasItem {
   id: string
-  title: string
   order: number
-}
-
-export interface Ata {
-  content: string
-  updated_at: string
-}
-
-export interface OrdemDoDia {
-  id: string
+  priority: ProximasLeiturasItemPriority
+  // Metadados bibliográficos
   title: string
-  meeting_date?: string   // YYYY-MM-DD, opcional
-  pautas: Pauta[]
-  ata: Ata
-  archived?: boolean
+  authors: string[]       // ex.: ["Silva, J. A.", "Souza, M."]
+  year?: number
+  journal?: string        // nome do periódico ou livro
+  volume?: string
+  issue?: string
+  pages?: string
+  doi?: string
+  url?: string
+  // Arquivo
+  attachment?: Anexo
+  created_at: string
+}
+
+export interface ProximasLeituras {
+  id: string
+  name: string
+  items: ProximasLeiturasItem[]
   created_at: string
   updated_at: string
 }

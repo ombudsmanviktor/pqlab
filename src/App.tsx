@@ -15,7 +15,7 @@ import { Tarefas } from '@/pages/Tarefas'
 import { MapaConhecimento } from '@/pages/MapaConhecimento'
 import { Revisoes } from '@/pages/Revisoes'
 import { Submissoes } from '@/pages/Submissoes'
-import { OrdemDoDiaPage } from '@/pages/OrdemDoDia'
+import { ProximasLeiturasPage } from '@/pages/ProximasLeituras'
 import { NotFound } from '@/pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -47,7 +47,7 @@ export default function App() {
               <Route path="/submissoes" element={<Submissoes />} />
               <Route path="/listas" element={<ListasSimples />} />
               <Route path="/tarefas" element={<Tarefas />} />
-              <Route path="/ordemdia" element={<OrdemDoDiaPage />} />
+              <Route path="/proximas-leituras" element={<ProximasLeiturasPage />} />
               <Route path="/mapa" element={<MapaConhecimento />} />
             </Route>
             <Route path="*" element={<NotFound />} />
