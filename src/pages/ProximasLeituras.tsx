@@ -775,6 +775,7 @@ export function ProximasLeiturasPage() {
   const { isDemoMode } = useAuth()
   const { toasts, toast, dismiss } = useToast()
   const pendingSaves = useRef<Map<string, Promise<void>>>(new Map())
+  const saveTimers   = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => {
     if (isDemoMode) { setLists(DEMO); setLoading(false); return }
@@ -802,7 +803,15 @@ export function ProximasLeiturasPage() {
     setLists((prev) => prev.map((l) => (l.id === updated.id ? updated : l)))
     if (isDemoMode) return
     setSaving((prev) => new Set(prev).add(updated.id))
-    persistSave(updated)
+    // Debounce: cancela timer anterior para esta lista e aguarda 1,2 s após
+    // o último update (evita conflitos de SHA em campos com onChange por tecla).
+    const prev = saveTimers.current.get(updated.id)
+    if (prev) clearTimeout(prev)
+    const t = setTimeout(() => {
+      saveTimers.current.delete(updated.id)
+      persistSave(updated)
+    }, 1200)
+    saveTimers.current.set(updated.id, t)
   }
 
   // ─── DnD handler ────────────────────────────────────────────────────────
