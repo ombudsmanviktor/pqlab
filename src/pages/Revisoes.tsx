@@ -1107,18 +1107,21 @@ function ArguicaoCard({
   function updateContent(updated: Arguicao) { setData(updated); triggerSave(updated) }
 
   const secoes = getArguicaoSecoes(data)
+  // Strip the synthetic 'anot' entry (anotacaoOutrosMembros injected by getArguicaoSecoes)
+  // so it never gets persisted inside data.secoes — it lives in its own field.
+  const editableSecoes = secoes.filter(s => s.id !== 'anot')
 
   function updateSecao(idx: number, patch: Partial<{ label: string; content: string }>) {
-    const next = secoes.map((s, i) => i === idx ? { ...s, ...patch } : s)
+    const next = editableSecoes.map((s, i) => i === idx ? { ...s, ...patch } : s)
     updateContent({ ...data, secoes: next, anotacaoOutrosMembros: data.anotacaoOutrosMembros })
   }
 
   function removeSecao(idx: number) {
-    updateContent({ ...data, secoes: secoes.filter((_, i) => i !== idx), anotacaoOutrosMembros: data.anotacaoOutrosMembros })
+    updateContent({ ...data, secoes: editableSecoes.filter((_, i) => i !== idx), anotacaoOutrosMembros: data.anotacaoOutrosMembros })
   }
 
   function addSecao() {
-    updateContent({ ...data, secoes: [...secoes, { id: crypto.randomUUID(), label: 'Nova seção', content: '' }], anotacaoOutrosMembros: data.anotacaoOutrosMembros })
+    updateContent({ ...data, secoes: [...editableSecoes, { id: crypto.randomUUID(), label: 'Nova seção', content: '' }], anotacaoOutrosMembros: data.anotacaoOutrosMembros })
   }
 
   const tipo = data.tipoBanca === 'outro' ? (data.tipoOutro || 'Outro') : TIPO_LABELS[data.tipoBanca]
@@ -1180,7 +1183,7 @@ function ArguicaoCard({
                 )}
 
                 {/* Content sections — inline editable */}
-                {secoes.map((secao, idx) => (
+                {editableSecoes.map((secao, idx) => (
                   <div key={secao.id}>
                     <div className="flex items-center gap-1 mb-1.5">
                       {editingLabelIdx === idx ? (
@@ -1240,7 +1243,7 @@ function ArguicaoCard({
                   </p>
                   <InlineMarkdownField
                     value={data.anotacaoOutrosMembros}
-                    onChange={(v) => updateContent({ ...data, secoes, anotacaoOutrosMembros: v })}
+                    onChange={(v) => updateContent({ ...data, secoes: editableSecoes, anotacaoOutrosMembros: v })}
                     placeholder="Anotações de outros membros…"
                   />
                 </div>
