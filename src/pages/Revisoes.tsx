@@ -1184,7 +1184,7 @@ function ArguicaoCard({
 
                 {/* Content sections — inline editable */}
                 {editableSecoes.map((secao, idx) => (
-                  <div key={secao.id}>
+                  <div key={secao.id} className="group/sec">
                     <div className="flex items-center gap-1 mb-1.5">
                       {editingLabelIdx === idx ? (
                         <input
@@ -1209,16 +1209,14 @@ function ArguicaoCard({
                           <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                         </button>
                       )}
-                      {editingLabelIdx === idx && (
-                        <button
-                          type="button"
-                          onClick={() => removeSecao(idx)}
-                          className="ml-auto text-red-300 hover:text-red-500 transition-colors"
-                          title="Remover seção"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => removeSecao(idx)}
+                        className="ml-auto p-0.5 rounded text-gray-300 opacity-0 group-hover/sec:opacity-100 hover:text-red-500 hover:bg-red-50 transition-all"
+                        title="Remover seção"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                     <InlineMarkdownField
                       value={secao.content}
