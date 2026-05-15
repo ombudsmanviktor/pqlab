@@ -472,6 +472,7 @@ function ProximasLeiturasCard({
 }) {
   const [urlInput, setUrlInput] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const isImporting = importingListId === lista.id
 
   function openFilePicker() {
@@ -499,7 +500,14 @@ function ProximasLeiturasCard({
           {lista.items.length}
         </Badge>
         {isSaving && <span className="text-[10px] text-gray-300 animate-pulse ml-1">salvando…</span>}
-        <button onClick={onRename} className="p-1.5 rounded hover:bg-indigo-50 text-gray-300 hover:text-indigo-500 transition-colors ml-1" title="Renomear">
+        <button
+          onClick={() => setCollapsed(c => !c)}
+          className="p-1.5 rounded hover:bg-indigo-50 text-gray-300 hover:text-indigo-500 transition-colors ml-1"
+          title={collapsed ? 'Expandir lista' : 'Colapsar lista'}
+        >
+          {collapsed ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+        </button>
+        <button onClick={onRename} className="p-1.5 rounded hover:bg-indigo-50 text-gray-300 hover:text-indigo-500 transition-colors" title="Renomear">
           <Pencil className="w-3.5 h-3.5" />
         </button>
         <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-50 text-gray-300 hover:text-red-400 transition-colors" title="Excluir lista">
@@ -507,8 +515,8 @@ function ProximasLeiturasCard({
         </button>
       </div>
 
-      {/* Items */}
-      <Droppable droppableId={lista.id} type="ITEM">
+      {/* Items + Add area — hidden when collapsed */}
+      {!collapsed && (<><Droppable droppableId={lista.id} type="ITEM">
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps} className="flex-1">
             {lista.items.length === 0 && (
@@ -579,6 +587,7 @@ function ProximasLeiturasCard({
           Arraste um PDF aqui ou clique para selecionar
         </div>
       </div>
+      </>)}
     </div>
   )
 }
