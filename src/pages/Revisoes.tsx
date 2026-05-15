@@ -9,7 +9,7 @@ import {
   ClipboardCheck, Plus, Edit2, Trash2, Download, FileText,
   ChevronDown, ChevronUp, X, Search,
   Calendar, Users, BookOpen, ArrowUpDown, ArrowUp, ArrowDown, Upload,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, Maximize2, Minimize2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -1078,11 +1078,14 @@ type RefFormat = 'abnt' | 'apa' | 'tabela'
 
 function ArguicaoCard({
   a, refFormat, onEdit, onDelete, onUpdate, isDemoMode, defaultExpanded = false,
+  isMaximized = false, onToggleMaximize,
 }: {
   a: Arguicao; refFormat: RefFormat; onEdit: () => void; onDelete: () => void
   onUpdate: (updated: Arguicao) => void; isDemoMode: boolean; defaultExpanded?: boolean
+  isMaximized?: boolean; onToggleMaximize?: () => void
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const effectiveExpanded = isMaximized ? true : expanded
   const [data, setData] = useState(a)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const [editingLabelIdx, setEditingLabelIdx] = useState<number | null>(null)
@@ -1127,8 +1130,8 @@ function ArguicaoCard({
   const tipo = data.tipoBanca === 'outro' ? (data.tipoOutro || 'Outro') : TIPO_LABELS[data.tipoBanca]
   const modalidade = data.modalidade ? ` · ${data.modalidade === 'qualificacao' ? 'Qualificação' : 'Defesa'}` : ''
 
-  return (
-    <Card className="hover:shadow-md transition-shadow">
+  const cardBody = (
+    <Card className={isMaximized ? "shadow-none border-0" : "hover:shadow-md transition-shadow"}>
       <CardContent className="pt-4 pb-4">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -1145,12 +1148,12 @@ function ArguicaoCard({
             <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
               <Calendar className="w-3 h-3" /> {formatDate(data.data)}
             </p>
-            {!expanded && refFormat !== 'tabela' && (
+            {!effectiveExpanded && refFormat !== 'tabela' && (
               <p className="text-xs text-gray-500 mt-2 italic line-clamp-2">
                 {refFormat === 'abnt' ? formatABNTArguicao(data).replace(/\*\*/g, '') : formatAPAArguicao(data).replace(/\*/g, '')}
               </p>
             )}
-            {expanded && (
+            {effectiveExpanded && (
               <div className="mt-4 space-y-4">
                 {/* Auto-save indicator */}
                 <div className="flex justify-end">
@@ -1250,6 +1253,11 @@ function ArguicaoCard({
           </div>
           </div>
           <div className="flex items-center gap-1 shrink-0 self-end sm:self-start sm:ml-2">
+            {onToggleMaximize && (
+              <button onClick={onToggleMaximize} title={isMaximized ? 'Restaurar' : 'Maximizar'} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            )}
             {/* Export buttons — hidden on mobile to prevent content squeeze */}
             <div className="hidden sm:flex items-center gap-1">
               <button onClick={() => exportArguicaoPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
@@ -1269,24 +1277,39 @@ function ArguicaoCard({
               <Trash2 className="w-4 h-4" />
             </button>
             <button onClick={() => setExpanded(!expanded)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {effectiveExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
         </div>
       </CardContent>
     </Card>
   )
+
+  if (isMaximized) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-white overflow-auto">
+        <div className="max-w-4xl mx-auto px-6 py-8 lg:px-10">
+          {cardBody}
+        </div>
+      </div>
+    )
+  }
+
+  return cardBody
 }
 
 // ─── Parecer card ──────────────────────────────────────────────────────────
 
 function ParecerCard({
   p, onEdit, onDelete, onUpdate, isDemoMode, defaultExpanded = false,
+  isMaximized = false, onToggleMaximize,
 }: {
   p: Parecer; onEdit: () => void; onDelete: () => void
   onUpdate: (updated: Parecer) => void; isDemoMode: boolean; defaultExpanded?: boolean
+  isMaximized?: boolean; onToggleMaximize?: () => void
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded)
+  const effectiveExpanded = isMaximized ? true : expanded
   const [data, setData] = useState(p)
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved')
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -1311,8 +1334,8 @@ function ParecerCard({
   const wordCount = data.parecer.trim() ? data.parecer.trim().split(/\s+/).length : 0
   const charCount = data.parecer.length
 
-  return (
-    <Card className="hover:shadow-md transition-shadow">
+  const cardBody = (
+    <Card className={isMaximized ? "shadow-none border-0" : "hover:shadow-md transition-shadow"}>
       <CardContent className="pt-4 pb-4">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3">
           <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -1331,7 +1354,7 @@ function ParecerCard({
             <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
               <Calendar className="w-3 h-3" /> {formatDate(data.data)}
             </p>
-            {expanded && (
+            {effectiveExpanded && (
               <div className="mt-4 space-y-3">
                 {/* Auto-save indicator */}
                 <div className="flex justify-end">
@@ -1357,6 +1380,11 @@ function ParecerCard({
           </div>
           </div>
           <div className="flex items-center gap-1 shrink-0 self-end sm:self-start sm:ml-2">
+            {onToggleMaximize && (
+              <button onClick={onToggleMaximize} title={isMaximized ? 'Restaurar' : 'Maximizar'} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+                {isMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </button>
+            )}
             {/* Export buttons — hidden on mobile to prevent content squeeze */}
             <div className="hidden sm:flex items-center gap-1">
               <button onClick={() => exportParecerPDF(data)} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
@@ -1376,13 +1404,25 @@ function ParecerCard({
               <Trash2 className="w-4 h-4" />
             </button>
             <button onClick={() => setExpanded(!expanded)} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+              {effectiveExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
         </div>
       </CardContent>
     </Card>
   )
+
+  if (isMaximized) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-white overflow-auto">
+        <div className="max-w-4xl mx-auto px-6 py-8 lg:px-10">
+          {cardBody}
+        </div>
+      </div>
+    )
+  }
+
+  return cardBody
 }
 
 // ─── Type chooser dialog ────────────────────────────────────────────────────
@@ -1627,6 +1667,7 @@ export function Revisoes() {
   const [search, setSearch] = useState('')
   const [importOpen, setImportOpen] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [maximizedId, setMaximizedId] = useState<string | null>(null)
 
   useEffect(() => {
     if (isDemoMode) return
@@ -1876,6 +1917,8 @@ export function Revisoes() {
               onUpdate={(updated) => setRevisoes((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
               isDemoMode={isDemoMode}
               defaultExpanded={expandedId === r.id}
+              isMaximized={maximizedId === r.id}
+              onToggleMaximize={() => setMaximizedId((prev) => prev === r.id ? null : r.id)}
             />
           ) : (
             <ParecerCard
@@ -1885,6 +1928,8 @@ export function Revisoes() {
               onUpdate={(updated) => setRevisoes((prev) => prev.map((x) => x.id === updated.id ? updated : x))}
               isDemoMode={isDemoMode}
               defaultExpanded={expandedId === r.id}
+              isMaximized={maximizedId === r.id}
+              onToggleMaximize={() => setMaximizedId((prev) => prev === r.id ? null : r.id)}
             />
           )
         )}

@@ -885,11 +885,31 @@ export function InlineMarkdownField({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  function wrapInline(before: string, after: string) {
+    const el = editorRef.current!
+    const saved = getSelectionOffsets(el)
+    if (!saved) return
+    const { start, end } = saved
+    const text = docRef.current
+    const selected = text.slice(start, end) || 'texto'
+    const newText = text.slice(0, start) + before + selected + after + text.slice(end)
+    docRef.current = newText
+    const newStart = start + before.length
+    const newEnd = newStart + selected.length
+    pendingSel.current = { start: newStart, end: newEnd }
+    setDoc(newText)
+    onChange(newText)
+  }
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     // Escape — blur the editor
     if (e.key === 'Escape') { editorRef.current?.blur(); return }
     // Tab — insert two spaces (Tab does not generate a beforeinput event)
     if (e.key === 'Tab') { e.preventDefault(); applyEdit('insertText', '  ', null); return }
+    const mod = e.metaKey || e.ctrlKey
+    if (mod && e.key === 'b') { e.preventDefault(); wrapInline('**', '**'); return }
+    if (mod && e.key === 'i') { e.preventDefault(); wrapInline('_', '_'); return }
+    if (mod && e.key === 's') { e.preventDefault(); wrapInline('__', '__'); return }
   }
 
   // Dead-key / IME: browser committed the composed text to the DOM.
