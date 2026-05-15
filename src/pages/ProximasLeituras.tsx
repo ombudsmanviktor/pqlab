@@ -145,6 +145,19 @@ function flattenItems(lists: ProximasLeituras[]): FlatItem[] {
     })
 }
 
+// ─── Collapsed-state persistence (localStorage) ───────────────────────────
+
+const COLLAPSED_KEY = 'pqlab:proximasleituras:collapsed'
+
+function readCollapsed(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? '[]')) }
+  catch { return new Set() }
+}
+
+function writeCollapsed(ids: Set<string>) {
+  localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...ids]))
+}
+
 // ─── Demo data ────────────────────────────────────────────────────────────
 
 const DEMO: ProximasLeituras[] = [
@@ -472,8 +485,18 @@ function ProximasLeiturasCard({
 }) {
   const [urlInput, setUrlInput] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => readCollapsed().has(lista.id))
   const isImporting = importingListId === lista.id
+
+  function toggleCollapsed() {
+    setCollapsed(prev => {
+      const next = !prev
+      const ids = readCollapsed()
+      if (next) ids.add(lista.id); else ids.delete(lista.id)
+      writeCollapsed(ids)
+      return next
+    })
+  }
 
   function openFilePicker() {
     const inp = document.createElement('input')
@@ -501,7 +524,7 @@ function ProximasLeiturasCard({
         </Badge>
         {isSaving && <span className="text-[10px] text-gray-300 animate-pulse ml-1">salvando…</span>}
         <button
-          onClick={() => setCollapsed(c => !c)}
+          onClick={toggleCollapsed}
           className="p-1.5 rounded hover:bg-indigo-50 text-gray-300 hover:text-indigo-500 transition-colors ml-1"
           title={collapsed ? 'Expandir lista' : 'Colapsar lista'}
         >
