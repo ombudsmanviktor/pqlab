@@ -606,7 +606,8 @@ function restoreSelectionOffsets(el: Element, start: number, end: number) {
 
 interface Seg { text: string; cls: string }
 
-const INLINE_TOKEN_RE = /(\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|__[^_\n]+?__|==[^=\n]+?==[gbp]?|\*[^*\n]+?\*|`[^`\n]+?`|\[\[[^\]\n]+?\]\]|\[[^\]\n]+?\]\([^)\n]+?\)|\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b|\(\d+\))/g
+// _italic_ must come AFTER __underline__ so double-underscore is consumed first.
+const INLINE_TOKEN_RE = /(\*\*[^*\n]+?\*\*|~~[^~\n]+?~~|__[^_\n]+?__|_[^_\n]+?_|==[^=\n]+?==[gbp]?|\*[^*\n]+?\*|`[^`\n]+?`|\[\[[^\]\n]+?\]\]|\[[^\]\n]+?\]\([^)\n]+?\)|\bpp?\.\s*\d+(?:\s*[-–]\s*\d+)?\b|\(\d+\))/g
 
 function tokenInline(text: string, base: string): Seg[] {
   const out: Seg[] = []
@@ -638,6 +639,10 @@ function tokenInline(text: string, base: string): Seg[] {
       } else {
         out.push({ text: s, cls: base })
       }
+    } else if (s.startsWith('_') && !s.startsWith('__') && s.length > 2) {
+      out.push({ text: '_', cls: 'text-gray-300' })
+      out.push({ text: s.slice(1, -1), cls: cn('italic', base) })
+      out.push({ text: '_', cls: 'text-gray-300' })
     } else if (s.startsWith('*') && s.length > 2) {
       out.push({ text: '*', cls: 'text-gray-300' })
       out.push({ text: s.slice(1, -1), cls: cn('italic', base) })
@@ -908,7 +913,7 @@ export function InlineMarkdownField({
     if (e.key === 'Tab') { e.preventDefault(); applyEdit('insertText', '  ', null); return }
     const mod = e.metaKey || e.ctrlKey
     if (mod && e.key === 'b') { e.preventDefault(); wrapInline('**', '**'); return }
-    if (mod && e.key === 'i') { e.preventDefault(); wrapInline('_', '_'); return }
+    if (mod && e.key === 'i') { e.preventDefault(); wrapInline('*', '*'); return }
     if (mod && e.key === 's') { e.preventDefault(); wrapInline('__', '__'); return }
   }
 
