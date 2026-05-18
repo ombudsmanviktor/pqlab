@@ -16,7 +16,7 @@ Toda a persistência de dados ocorre diretamente no repositório GitHub do usuá
 
 ## :clapper: Tutorial
 
-<div style="position: relative; padding-bottom: 56.25%; height: 0;"><iframe src="https://www.loom.com/embed/a12be151ba284ed2832ec130017b1b11" frameborder="0" webkitallowfullscreen mozallowfullscreen allowfullscreen style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe></div>
+<a href="https://www.loom.com/share/a12be151ba284ed2832ec130017b1b11"><img src=""></a>
 
 ## :gem: Módulos
 
