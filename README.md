@@ -1,5 +1,3 @@
-__TOC__
-
 # :pencil2: pqLAB
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20272857.svg)](https://doi.org/10.5281/zenodo.20272857)
