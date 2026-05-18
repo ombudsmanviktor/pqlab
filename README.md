@@ -6,45 +6,6 @@ O pqLAB é uma ferramenta web de organização de pesquisa qualitativa que centr
 
 <img src="screenshots/ombudsman-logo.png" alt="Desenvolvido por Viktor Chagas" align="right" width="100">O software foi desenvolvido por [Viktor Chagas](https://scholar.google.com/citations?user=F02DKoAAAAAJ&hl=en) e pelo [coLAB/UFF](http://colab-uff.github.io), com auxílio do Claude Code Sonnet 4.6 para as tarefas de programação. Os autores agradecem a Rafael Cardoso Sampaio pelos comentários e sugestões de adoção de ferramentas de IA, que levaram ao planejamento inicial da aplicação.
 
-<!-- TOC:start -->
-<table align="right" border="1" cellpadding="6" cellspacing="0" width="360">
-<tr><th align="center">📋&nbsp;Conteúdo</th></tr>
-<tr><td>
-    <b>1</b>&nbsp;<a href="#pqlab">pqLAB</a><br>
-    <b>2</b>&nbsp;<a href="#frameworks">Frameworks</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>2.1</b>&nbsp;<a href="#módulos">Módulos</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.1</b>&nbsp;<a href="#1-diário-de-campo">1. Diário de Campo</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.2</b>&nbsp;<a href="#2-listas-e-memorandos">2. Listas e Memorandos</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.3</b>&nbsp;<a href="#3-tarefas">3. Tarefas</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.4</b>&nbsp;<a href="#4-favoritos">4. Favoritos</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.5</b>&nbsp;<a href="#5-fichamentos">5. Fichamentos</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.6</b>&nbsp;<a href="#6-planos">6. Planos</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.7</b>&nbsp;<a href="#7-submissões">7. Submissões</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>2.1.8</b>&nbsp;<a href="#8-visualização-em-mapa">8. Visualização em Mapa</a><br>
-    <b>3</b>&nbsp;<a href="#instalação-do-pqlab--passo-a-passo">🚀 Instalação do pqLAB — Passo a passo</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.1</b>&nbsp;<a href="#passo-1--fork-do-repositório">Passo 1 — Fork do repositório</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.2</b>&nbsp;<a href="#passo-2--ativar-o-github-pages">Passo 2 — Ativar o GitHub Pages</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.3</b>&nbsp;<a href="#passo-3--criar-o-repositório-de-dados">Passo 3 — Criar o repositório de dados</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.4</b>&nbsp;<a href="#passo-4--gerar-um-personal-access-token-pat">Passo 4 — Gerar um Personal Access Token (PAT)</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.5</b>&nbsp;<a href="#passo-5--configurar-o-login">Passo 5 — Configurar o login</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.6</b>&nbsp;<a href="#login-com-google-opcional">Login com Google (opcional)</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.7</b>&nbsp;<a href="#instalação-local-desenvolvimento">Instalação local (desenvolvimento)</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.8</b>&nbsp;<a href="#estrutura-de-dados-criada-automaticamente">Estrutura de dados criada automaticamente</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;<b>3.9</b>&nbsp;<a href="#changelog">Changelog</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.1</b>&nbsp;<a href="#v012β--11-de-maio-de-2026-versão-atual-estável">v0.12β — 11 de maio de 2026 (versão atual estável)</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.2</b>&nbsp;<a href="#v011β--8-de-maio-de-2026">v0.11β — 8 de maio de 2026</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.3</b>&nbsp;<a href="#v010β--5-de-maio-de-2026">v0.10β — 5 de maio de 2026</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.4</b>&nbsp;<a href="#v09β--28-de-abril-de-2026">v0.9β — 28 de abril de 2026</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.5</b>&nbsp;<a href="#v08β--21-de-abril-de-2026">v0.8β — 21 de abril de 2026</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.6</b>&nbsp;<a href="#v07β--1720-de-abril-de-2026">v0.7β — 17–20 de abril de 2026</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.7</b>&nbsp;<a href="#v04β--29-de-março-de-2026--doi-105281zenodo19305324">v0.4β — 29 de março de 2026 · DOI 10.5281/zenodo.19305324</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.8</b>&nbsp;<a href="#v03β--28-de-março-de-2026--doi-105281zenodo19299289">v0.3β — 28 de março de 2026 · DOI 10.5281/zenodo.19299289</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.9</b>&nbsp;<a href="#v02β--26-de-março-de-2026--doi-105281zenodo19229101">v0.2β — 26 de março de 2026 · DOI 10.5281/zenodo.19229101</a><br>
-    &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>3.9.10</b>&nbsp;<a href="#v01β--17-de-março-de-2026--doi-105281zenodo19058215">v0.1β — 17 de março de 2026 · DOI 10.5281/zenodo.19058215</a><br>
-</td></tr>
-</table>
-
-<!-- TOC:end -->
 # :octocat: Frameworks
 
 O pqLAB foi desenvolvido em TypeScript com React 19 como framework de interface, utilizando Vite 7 como bundler e servidor de desenvolvimento. A estilização é feita com Tailwind CSS v4 (via plugin oficial para Vite). Para roteamento foi utilizado React Router v7 com rotas aninhadas, e o gerenciamento de dados assíncronos é feito com TanStack Query v5. Os componentes de interface seguem o padrão shadcn/ui, construídos sobre primitivos Radix UI com utilitários cva, clsx e tailwind-merge. Recursos adicionais incluem @hello-pangea/dnd para drag-and-drop no kanban, Recharts para gráficos, jsPDF + jspdf-autotable para exportação em PDF, xlsx para planilhas e js-yaml para serialização dos dados e SVG puro para o grafo, além de opcionalmente integrar com Firebase.
