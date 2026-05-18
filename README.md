@@ -217,7 +217,99 @@ meus-dados-pq/
 
 ## Changelog
 
-### v0.8β — 21 de abril de 2026 (versão atual estável)
+### v0.12β — 11 de maio de 2026 (versão atual estável)
+
+#### Atalhos de teclado no editor · Botão maximizar em Revisões · Correções
+
+#### Novas funcionalidades
+
+Atalhos de formatação Markdown em todos os campos de edição inline do app: Cmd/Ctrl+B (negrito), Cmd/Ctrl+I (itálico), Cmd/Ctrl+S (sublinhado); funciona sobre seleção ou insere placeholder quando não há texto selecionado
+
+Módulo Revisões — botão **Maximizar** em cada arguição e parecer: a entrada ocupa toda a janela do browser em overlay fixo com conteúdo centralizado e expandido automaticamente; botão **Restaurar** devolve à visualização normal
+
+Módulo Revisões — botão × para excluir seções visível ao passar o cursor sobre o título, sem necessidade de entrar no modo de edição do rótulo
+
+#### Correções
+
+Módulo Revisões: campo "Anotações de Outros Membros da Banca" não duplicava a cada caractere digitado (o trecho sintético injetado por `getArguicaoSecoes` era reinserido em `data.secoes` a cada render, crescendo indefinidamente)
+
+Editor inline: `_texto_` (underscore simples) agora renderiza corretamente como itálico no editor ao vivo, assim como `*texto*`; o tokenizador passa a reconhecer ambas as sintaxes, com `__texto__` (sublinhado) consumido antes para evitar conflito
+
+Módulo Próximas Leituras: listas colapsadas persistem entre sessões via `localStorage` — cada card lê e grava seu estado independentemente
+
+---
+
+### v0.11β — 8 de maio de 2026
+
+#### Próximas Leituras: modos de visualização, campo de descrição, reordenação de listas
+
+#### Novas funcionalidades
+
+Três modos de visualização alternáveis por ícone no cabeçalho: **Cards** (padrão, grade de listas), **Timeline** (todos os itens de todas as listas agrupados por prioridade, com linha vertical e badge de lista) e **Tabela** (colunas Autores, Título, Ano, Publicação, Prioridade, Adicionado, Link)
+
+Campo de **descrição** por entrada: anotações em markdown inline colapsáveis via botão StickyNote; snippet da descrição visível no modo recolhido
+
+Botão de link externo (ExternalLink) quando não há arquivo anexado mas há DOI ou URL — diferenciado do ícone Paperclip de download de arquivo
+
+Reordenação drag-and-drop dos próprios cards de lista (além dos itens dentro de cada lista), via alça GripVertical no cabeçalho do card; contexto DnD único na página gerencia tanto `type="LIST"` quanto `type="ITEM"`
+
+Listas colapsáveis via botão ∧/∨ no cabeçalho do card, ocultando itens e área de adição
+
+#### Correções
+
+Debounce de 1,2 s no salvamento para evitar conflitos de SHA ao digitar rapidamente em campos inline (editor disparava um save por tecla, gerando escritas concorrentes na API do GitHub)
+
+---
+
+### v0.10β — 5 de maio de 2026
+
+#### Novo módulo: Próximas Leituras (substitui Ordem do Dia)
+
+#### Novas funcionalidades
+
+Múltiplas listas de leituras pendentes exibidas como cards nomeados e reordenáveis por drag-and-drop
+
+Importação de metadados via **DOI** (API CrossRef) ou **URL** (proxy CORS + parsing de meta tags `<og:title>`, `citation_*`); fallback para título = input quando a importação falha
+
+Citação em **formato APA** editável inline com campos expandíveis (título, autores, ano, periódico, volume, número, páginas, DOI, URL)
+
+**Pílulas de prioridade** clicáveis — Urgente (vermelho) / Normal (amarelo) / Não urgente (cinza) — que ciclam por clique
+
+Reordenação de entradas por drag-and-drop dentro de cada lista; numeração automática atualizada após a reordenação
+
+Anexo de arquivos PDF por drag-and-drop na dropzone do card ou por seleção via diálogo de arquivo; upload para o repositório GitHub
+
+---
+
+### v0.9β — 28 de abril de 2026
+
+#### Melhorias em Submissões
+
+#### Novas funcionalidades
+
+Submissões: arquivo de cards e marcação com estrela — cards arquivados ficam ocultos por padrão com toggle para exibição
+
+Submissões: chips de autores com adição e remoção individual
+
+Submissões: salvamento otimista — atualização imediata na UI antes da confirmação do GitHub, sem spinner bloqueante
+
+Submissões: recursos por card (links para versões, respostas a pareceristas, cartas etc.) com título e URL
+
+Submissões: sugestões de tags ao digitar baseadas nas tags já existentes no quadro
+
+Submissões: reordenação de cards por drag-and-drop dentro de cada coluna
+
+#### Correções
+
+Kanban: ordem dos cards armazenada em arquivo único `_order.yaml` em vez de campos por card, eliminando condição de corrida em saves simultâneos
+
+Kanban: saves executados em série com atualização de estado in-place para evitar flickering
+
+`ghFetch` com `cache: no-store` para evitar respostas obsoletas da API do GitHub em ambiente com cache de service worker
+
+---
+
+### v0.8β — 21 de abril de 2026
 
 #### Editor inline reimplementado: contenteditable AST
 
