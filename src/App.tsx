@@ -16,6 +16,7 @@ import { MapaConhecimento } from '@/pages/MapaConhecimento'
 import { Revisoes } from '@/pages/Revisoes'
 import { Submissoes } from '@/pages/Submissoes'
 import { ProximasLeiturasPage } from '@/pages/ProximasLeituras'
+import { ChangelogPage } from '@/pages/Changelog'
 import { NotFound } from '@/pages/NotFound'
 
 const queryClient = new QueryClient({
@@ -49,6 +50,7 @@ export default function App() {
               <Route path="/tarefas" element={<Tarefas />} />
               <Route path="/proximas-leituras" element={<ProximasLeiturasPage />} />
               <Route path="/mapa" element={<MapaConhecimento />} />
+              <Route path="/changelog" element={<ChangelogPage />} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>

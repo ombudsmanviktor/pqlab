@@ -147,6 +147,17 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             <LogOut className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Version badge → changelog */}
+        <NavLink
+          to="/changelog"
+          onClick={onClose}
+          className="flex justify-center"
+        >
+          <span className="text-[10px] text-gray-300 hover:text-gray-500 transition-colors cursor-pointer">
+            v0.12β
+          </span>
+        </NavLink>
       </div>
     </div>
   )
