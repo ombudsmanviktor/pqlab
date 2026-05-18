@@ -16,7 +16,7 @@ Toda a persistência de dados ocorre diretamente no repositório GitHub do usuá
 
 ## :clapper: Tutorial
 
-<a href="https://www.loom.com/share/a12be151ba284ed2832ec130017b1b11"><img src=""></a>
+<a href="https://www.loom.com/share/a12be151ba284ed2832ec130017b1b11"><img src="screenshots/tutorial_pqlab.png"></a>
 
 ## :gem: Módulos
 
