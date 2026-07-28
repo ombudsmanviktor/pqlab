@@ -180,7 +180,7 @@ export function Sidebar({ mobileOpen, onMobileClose, desktopCollapsed, onDesktop
       {/* Desktop sidebar */}
       <div className={cn(
         'hidden lg:flex flex-shrink-0 h-screen sticky top-0 transition-all duration-200 overflow-hidden',
-        desktopCollapsed ? 'w-12' : 'w-64',
+        desktopCollapsed ? 'w-14' : 'w-64',
       )}>
         {desktopCollapsed ? (
           <div className="flex flex-col items-center w-full h-full bg-white border-r border-gray-200 py-4 gap-3">
