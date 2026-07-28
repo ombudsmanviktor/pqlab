@@ -21,7 +21,7 @@ const navItems = [
   { to: '/submissoes',  label: 'Submissões',            icon: Kanban,         color: 'text-sky-600',    bg: 'bg-sky-50',    activeBg: 'bg-sky-100' },
 ]
 
-function SidebarContent({ onClose, onToggleDesktop }: { onClose?: () => void; onToggleDesktop?: () => void }) {
+function SidebarContent({ onClose, onCollapse }: { onClose?: () => void; onCollapse?: () => void }) {
   const { user, signOut, isDemoMode } = useAuth()
   const { isDark, toggle } = useDarkMode()
   const navigate = useNavigate()
@@ -49,17 +49,16 @@ function SidebarContent({ onClose, onToggleDesktop }: { onClose?: () => void; on
             <div className="text-xs text-gray-400">coLAB/UFF</div>
           </div>
         </div>
-        {onToggleDesktop && (
-          <button onClick={onToggleDesktop} title="Recolher sidebar"
-            className="hidden lg:flex p-1 hover:bg-gray-100 rounded-md text-gray-500 transition-colors">
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
-        )}
-        {onClose && (
+        {onClose ? (
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-md text-gray-500">
             <X className="w-4 h-4" />
           </button>
-        )}
+        ) : onCollapse ? (
+          <button onClick={onCollapse} title="Recolher sidebar"
+            className="p-1 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-colors">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        ) : null}
       </div>
 
       {/* Demo badge */}
@@ -181,20 +180,23 @@ export function Sidebar({ mobileOpen, onMobileClose, desktopCollapsed, onDesktop
       {/* Desktop sidebar */}
       <div className={cn(
         'hidden lg:flex flex-shrink-0 h-screen sticky top-0 transition-all duration-200 overflow-hidden',
-        desktopCollapsed ? 'w-10' : 'w-64',
+        desktopCollapsed ? 'w-12' : 'w-64',
       )}>
         {desktopCollapsed ? (
-          <div className="flex flex-col items-center w-full bg-white border-r border-gray-200 pt-4">
+          <div className="flex flex-col items-center w-full h-full bg-white border-r border-gray-200 py-4 gap-3">
+            <div className="w-8 h-8 rounded-lg bg-green-500 flex items-center justify-center flex-shrink-0">
+              <GraduationCap className="w-4 h-4 text-white" />
+            </div>
             <button
               onClick={onDesktopToggle}
               title="Expandir sidebar"
-              className="p-2 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"
+              className="p-1.5 hover:bg-gray-100 rounded-md text-gray-400 hover:text-gray-600 transition-colors"
             >
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           </div>
         ) : (
-          <SidebarContent onToggleDesktop={onDesktopToggle} />
+          <SidebarContent onCollapse={onDesktopToggle} />
         )}
       </div>
 
