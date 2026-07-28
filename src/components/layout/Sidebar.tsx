@@ -2,6 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   BookOpen, Bookmark, FileText, CalendarDays, List, CheckSquare,
   LogOut, X, GraduationCap, Network, ClipboardCheck, Kanban, Sun, Moon, Library,
+  PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useDarkMode } from '@/contexts/DarkModeContext'
@@ -20,7 +21,7 @@ const navItems = [
   { to: '/submissoes',  label: 'Submissões',            icon: Kanban,         color: 'text-sky-600',    bg: 'bg-sky-50',    activeBg: 'bg-sky-100' },
 ]
 
-function SidebarContent({ onClose }: { onClose?: () => void }) {
+function SidebarContent({ onClose, onToggleDesktop }: { onClose?: () => void; onToggleDesktop?: () => void }) {
   const { user, signOut, isDemoMode } = useAuth()
   const { isDark, toggle } = useDarkMode()
   const navigate = useNavigate()
@@ -48,6 +49,12 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             <div className="text-xs text-gray-400">coLAB/UFF</div>
           </div>
         </div>
+        {onToggleDesktop && (
+          <button onClick={onToggleDesktop} title="Recolher sidebar"
+            className="hidden lg:flex p-1 hover:bg-gray-100 rounded-md text-gray-500 transition-colors">
+            <PanelLeftClose className="w-4 h-4" />
+          </button>
+        )}
         {onClose && (
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-md text-gray-500">
             <X className="w-4 h-4" />
@@ -163,15 +170,32 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
   )
 }
 
-export function Sidebar({ mobileOpen, onMobileClose }: {
+export function Sidebar({ mobileOpen, onMobileClose, desktopCollapsed, onDesktopToggle }: {
   mobileOpen: boolean
   onMobileClose: () => void
+  desktopCollapsed?: boolean
+  onDesktopToggle?: () => void
 }) {
   return (
     <>
       {/* Desktop sidebar */}
-      <div className="hidden lg:flex w-64 flex-shrink-0 h-screen sticky top-0">
-        <SidebarContent />
+      <div className={cn(
+        'hidden lg:flex flex-shrink-0 h-screen sticky top-0 transition-all duration-200 overflow-hidden',
+        desktopCollapsed ? 'w-10' : 'w-64',
+      )}>
+        {desktopCollapsed ? (
+          <div className="flex flex-col items-center w-full bg-white border-r border-gray-200 pt-4">
+            <button
+              onClick={onDesktopToggle}
+              title="Expandir sidebar"
+              className="p-2 hover:bg-gray-100 rounded-md text-gray-500 transition-colors"
+            >
+              <PanelLeftOpen className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <SidebarContent onToggleDesktop={onDesktopToggle} />
+        )}
       </div>
 
       {/* Mobile drawer */}

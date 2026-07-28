@@ -6,7 +6,18 @@ import { useDarkMode } from '@/contexts/DarkModeContext'
 
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [desktopCollapsed, setDesktopCollapsed] = useState(
+    () => localStorage.getItem('sidebar-collapsed') === 'true'
+  )
   const { isDark, toggle } = useDarkMode()
+
+  const handleDesktopToggle = () => {
+    setDesktopCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('sidebar-collapsed', String(next))
+      return next
+    })
+  }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
@@ -38,7 +49,12 @@ export function AppLayout() {
 
       {/* ── Body row ────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
-        <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
+        <Sidebar
+          mobileOpen={mobileOpen}
+          onMobileClose={() => setMobileOpen(false)}
+          desktopCollapsed={desktopCollapsed}
+          onDesktopToggle={handleDesktopToggle}
+        />
         <main className="flex-1 min-w-0 overflow-auto">
           <div className="p-6 lg:p-8 max-w-7xl mx-auto">
             <Outlet />
