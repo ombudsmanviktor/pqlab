@@ -4,7 +4,7 @@ import jsPDF from 'jspdf'
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd'
 import {
   CalendarDays, Plus, Edit2, Trash2, Download, FileText, Table2, GripVertical,
-  ChevronDown, ChevronUp, BookOpen, X, Check, Settings, ExternalLink, Link2,
+  ChevronDown, ChevronUp, BookOpen, X, Check, Settings, ExternalLink, Link2, Copy,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -817,8 +817,8 @@ function PlanoEditor({ plano, onSave, onCancel }: { plano: Plano; onSave: (p: Pl
   function handleSetup(config: { weekdays: number[]; frequency: Plano['frequency']; startDate: string; endDate: string }) {
     const dates = generateDates(config.startDate, config.endDate, config.weekdays, config.frequency)
     const aulas: PlanoAula[] = dates.map((d, i) => {
-      const existing = current.aulas.find((a) => a.date === d)
-      return existing ?? { id: crypto.randomUUID(), date: d, title: '', description: '', order: i, references: [] }
+      const existing = current.aulas[i]
+      return existing ? { ...existing, date: d, order: i } : { id: crypto.randomUUID(), date: d, title: '', description: '', order: i, references: [] }
     })
     setCurrent((prev) => ({
       ...prev,
@@ -951,7 +951,7 @@ function PlanoEditor({ plano, onSave, onCancel }: { plano: Plano; onSave: (p: Pl
 
 // ─── Plano card (index view) ───────────────────────────────────────────────
 
-function PlanoCard({ plano, onEdit, onDelete }: { plano: Plano; onEdit: () => void; onDelete: () => void }) {
+function PlanoCard({ plano, onEdit, onDuplicate, onDelete }: { plano: Plano; onEdit: () => void; onDuplicate: () => void; onDelete: () => void }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -990,6 +990,9 @@ function PlanoCard({ plano, onEdit, onDelete }: { plano: Plano; onEdit: () => vo
             </button>
             <button onClick={() => { void exportPlanoPDF(plano) }} title="Exportar PDF" className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
               <Download className="w-4 h-4" />
+            </button>
+            <button onClick={onDuplicate} title="Duplicar plano" className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-md transition-colors">
+              <Copy className="w-4 h-4" />
             </button>
             <button onClick={onEdit} title="Editar" className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors">
               <Edit2 className="w-4 h-4" />
@@ -1080,6 +1083,7 @@ export function Planos() {
   const [metaOpen, setMetaOpen] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [pendingPlano, setPendingPlano] = useState<Partial<Plano> | null>(null)
+  const [isDuplicate, setIsDuplicate] = useState(false)
 
   useEffect(() => {
     if (isDemoMode) return
@@ -1102,6 +1106,26 @@ export function Planos() {
       ],
     })))
   }, [planos, register])
+
+  function handleDuplicate(plano: Plano) {
+    const now = new Date().toISOString()
+    const copy: Plano = {
+      ...plano,
+      id: crypto.randomUUID(),
+      disciplina: `${plano.disciplina} (cópia)`,
+      created_at: now,
+      updated_at: now,
+      modulos: plano.modulos.map((m) => ({ ...m, id: crypto.randomUUID() })),
+      aulas: plano.aulas.map((a) => ({
+        ...a,
+        id: crypto.randomUUID(),
+        references: a.references.map((r) => ({ ...r, id: crypto.randomUUID() })),
+      })),
+    }
+    setEditing(copy)
+    setIsDuplicate(true)
+    setSetupOpen(true)
+  }
 
   function handleNewPlan() {
     const now = new Date().toISOString()
@@ -1168,18 +1192,21 @@ export function Planos() {
             setMetaOpen(false)
             if (pendingPlano) { setSetupOpen(true); setPendingPlano(null) }
           }} />
-        <SetupWizard open={setupOpen} onClose={() => setSetupOpen(false)}
+        <SetupWizard open={setupOpen} onClose={() => { setSetupOpen(false); setIsDuplicate(false) }}
           onSetup={(config) => {
             const dates = generateDates(config.startDate, config.endDate, config.weekdays, config.frequency)
             setEditing((prev) => {
               if (!prev) return prev
-              return {
-                ...prev,
-                ...config,
-                aulas: dates.map((d, i) => ({ id: crypto.randomUUID(), date: d, title: '', description: '', order: i, references: [] })),
-              }
+              const aulas: PlanoAula[] = isDuplicate
+                ? dates.map((d, i) => {
+                    const existing = prev.aulas[i]
+                    return existing ? { ...existing, date: d, order: i } : { id: crypto.randomUUID(), date: d, title: '', description: '', order: i, references: [] }
+                  })
+                : dates.map((d, i) => ({ id: crypto.randomUUID(), date: d, title: '', description: '', order: i, references: [] }))
+              return { ...prev, ...config, aulas }
             })
             setSetupOpen(false)
+            setIsDuplicate(false)
           }} />
       </div>
     )
@@ -1221,6 +1248,7 @@ export function Planos() {
               key={p.id}
               plano={p}
               onEdit={() => setEditing(p)}
+              onDuplicate={() => handleDuplicate(p)}
               onDelete={() => handleDelete(p.id)}
             />
           ))}
