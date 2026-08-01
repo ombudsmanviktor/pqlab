@@ -1181,6 +1181,7 @@ export function Planos() {
           </div>
         </div>
         <PlanoEditor
+          key={`${editing.id}-${editing.startDate}-${editing.aulas.length}`}
           plano={editing}
           onSave={handleSave}
           onCancel={() => setEditing(null)}
