@@ -60,6 +60,20 @@ function parseRecurso(s: string): { text: string; url: string } {
   return { text: s, url: s }
 }
 
+// ─── APA 7th formatter ──────────────────────────────────────────────────────
+
+function formatRefAPA(r: PlanoRef): string {
+  const parts: string[] = []
+  if (r.authors && r.authors.length > 0) {
+    const last = r.authors[r.authors.length - 1]
+    const head = r.authors.slice(0, -1)
+    parts.push(head.length > 0 ? head.join(', ') + ', & ' + last : last)
+  }
+  if (r.year) parts.push(`(${r.year})`)
+  parts.push(r.title)
+  return parts.join('. ')
+}
+
 // ─── Export helpers ────────────────────────────────────────────────────────
 
 function exportPlanoMarkdown(p: Plano) {
@@ -366,27 +380,51 @@ async function exportPlanoPDF(p: Plano) {
       return xStart + tw + 2
     }
 
-    // Helper: draw one ref group (text) and return list of {link} for QR row
+    // Helper: draw one ref group — each ref on its own block in APA 7th format
     function drawRefGroup(
       refs: PlanoRef[],
       tagLabel: string,
       color: [number, number, number],
     ): string[] {
       if (refs.length === 0) return []
-      ensureSpace(6)
-      const textX = drawRefTag(tagLabel, color, margin + 3, y)
-      const refText = refs.map((r) => {
-        const link = r.url || (r.doi ? `doi.org/${r.doi}` : '')
-        return r.title + (r.year ? ` (${r.year})` : '') + (link ? ` — ${link}` : '')
-      }).join('; ')
-      const lines = doc.splitTextToSize(refText, contentWidth - (textX - margin))
-      ensureSpace(lines.length * 4)
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(7.5)
-      doc.setTextColor(...color)
-      doc.text(lines, textX, y)
-      y += lines.length * 4 + 1
-      return refs.map((r) => r.url || (r.doi ? `https://doi.org/${r.doi}` : '')).filter(Boolean)
+      const links: string[] = []
+
+      for (const r of refs) {
+        ensureSpace(10)
+        const textX = drawRefTag(tagLabel, color, margin + 3, y)
+        // 2 mm safety inset to prevent right-edge overflow
+        const availWidth = pageWidth - margin - textX - 2
+
+        // APA citation (authors + year + title)
+        const citation = formatRefAPA(r)
+        const citLines = doc.splitTextToSize(citation, availWidth)
+        ensureSpace(citLines.length * 4 + 1)
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7.5)
+        doc.setTextColor(...color)
+        doc.text(citLines, textX, y)
+        const blockTop = y - 3.5
+        y += citLines.length * 4
+
+        // URL on its own line — smaller, colored, safely wrapped
+        const link = r.doi ? `https://doi.org/${r.doi}` : (r.url || '')
+        if (link) {
+          const urlLines = doc.splitTextToSize(link, availWidth)
+          ensureSpace(urlLines.length * 3.5 + 1)
+          doc.setFont('helvetica', 'normal')
+          doc.setFontSize(6)
+          doc.setTextColor(60, 100, 200)
+          doc.text(urlLines, textX, y)
+          y += urlLines.length * 3.5
+          // Clickable PDF annotation over entire citation + URL block
+          doc.link(textX, blockTop, availWidth, y - blockTop + 1, { url: link })
+          links.push(link)
+        }
+
+        y += 2.5 // gap between refs
+      }
+
+      return links
     }
 
     const mandatoryLinks = drawRefGroup(mandatory, 'Leituras', [30, 80, 200])
