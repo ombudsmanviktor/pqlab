@@ -51,6 +51,15 @@ const DEMO: Plano[] = [
 const WEEKDAY_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const WEEKDAY_FULL = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
+// ─── Resource parser ────────────────────────────────────────────────────────
+// Supports "Label (https://...)" or plain URLs
+
+function parseRecurso(s: string): { text: string; url: string } {
+  const match = s.match(/^(.+?)\s*\((https?:\/\/[^)]+)\)\s*$/)
+  if (match) return { text: match[1].trim(), url: match[2].trim() }
+  return { text: s, url: s }
+}
+
 // ─── Export helpers ────────────────────────────────────────────────────────
 
 function exportPlanoMarkdown(p: Plano) {
@@ -95,7 +104,9 @@ async function exportPlanoPDF(p: Plano) {
   // ── Pre-generate all QR codes ────────────────────────────────────────────
   const qrMap = new Map<string, string>()
   const allLinks = new Set<string>()
-  for (const url of p.recursos) { if (url) allLinks.add(url) }
+  const validRecursos = p.recursos.filter(Boolean)
+  const parsedRecursos = validRecursos.map(parseRecurso)
+  for (const { url } of parsedRecursos) { if (url) allLinks.add(url) }
   for (const aula of p.aulas) {
     for (const r of aula.references) {
       const link = r.url || (r.doi ? `https://doi.org/${r.doi}` : '')
@@ -232,8 +243,7 @@ async function exportPlanoPDF(p: Plano) {
   }
 
   // ── 4. RECURSOS (URLs + QR codes) ────────────────────────────────────────
-  const validRecursos = p.recursos.filter(Boolean)
-  if (validRecursos.length > 0) {
+  if (parsedRecursos.length > 0) {
     doc.setDrawColor(220, 210, 240)
     doc.setLineWidth(0.2)
     doc.line(margin, y, pageWidth - margin, y)
@@ -248,19 +258,17 @@ async function exportPlanoPDF(p: Plano) {
     const qrGap = 4
     const textColWidth = contentWidth - qrSize - qrGap
 
-    for (const url of validRecursos) {
+    for (const { text, url } of parsedRecursos) {
       const qrDataUrl = qrMap.get(url)
       const rowHeight = qrSize + 2
-      if (y + rowHeight > 270) break // avoid overflow on cover; rest appear in lesson pages
+      if (y + rowHeight > 270) break
 
-      // URL label
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(7.5)
       doc.setTextColor(30, 80, 200)
-      const urlLines = doc.splitTextToSize(url, textColWidth - 2)
-      doc.text(urlLines.slice(0, 3), margin, y + 4)
+      const labelLines = doc.splitTextToSize(text, textColWidth - 2)
+      doc.text(labelLines.slice(0, 3), margin, y + 4)
 
-      // QR image
       if (qrDataUrl) {
         doc.addImage(qrDataUrl, 'PNG', pageWidth - margin - qrSize, y - 2, qrSize, qrSize)
       }
@@ -604,7 +612,8 @@ function PlanoMeta({ open, onClose, onSave, initial }: PlanoMetaProps) {
           </div>
           <div className="space-y-1.5">
             <Label>Recursos adicionais (um por linha)</Label>
-            <textarea value={recursos} onChange={(e) => setRecursos(e.target.value)} rows={3} placeholder="https://classroom.google.com/..."
+            <textarea value={recursos} onChange={(e) => setRecursos(e.target.value)} rows={3}
+              placeholder={"Google Drive (https://bit.ly/exemplo)\nhttps://classroom.google.com/c/abc123"}
               className="flex w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500" />
           </div>
         </div>
@@ -856,6 +865,20 @@ function PlanoEditor({ plano, onSave, onCancel }: { plano: Plano; onSave: (p: Pl
                 {weekdayLabel} · {freqLabel} · {formatDate(current.startDate)} – {formatDate(current.endDate)}
               </p>
             )}
+            {current.recursos.filter(Boolean).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {current.recursos.filter(Boolean).map((r, i) => {
+                  const { text, url } = parseRecurso(r)
+                  return (
+                    <a key={i} href={url} target="_blank" rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline">
+                      <ExternalLink className="w-3 h-3 shrink-0" />
+                      {text}
+                    </a>
+                  )
+                })}
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={() => setMetaOpen(true)}>
@@ -1013,6 +1036,23 @@ function PlanoCard({ plano, onEdit, onDuplicate, onDelete }: { plano: Plano; onE
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Descrição</p>
                 <p className="text-sm text-gray-700 leading-relaxed">{plano.ementa}</p>
+              </div>
+            )}
+            {plano.recursos.filter(Boolean).length > 0 && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Recursos Adicionais</p>
+                <div className="flex flex-col gap-1">
+                  {plano.recursos.filter(Boolean).map((r, i) => {
+                    const { text, url } = parseRecurso(r)
+                    return (
+                      <a key={i} href={url} target="_blank" rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 hover:underline w-fit">
+                        <ExternalLink className="w-3.5 h-3.5 shrink-0" />
+                        {text}
+                      </a>
+                    )
+                  })}
+                </div>
               </div>
             )}
             {plano.modulos.length > 0 && (
