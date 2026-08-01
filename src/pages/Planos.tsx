@@ -267,7 +267,17 @@ async function exportPlanoPDF(p: Plano) {
       doc.setFontSize(7.5)
       doc.setTextColor(30, 80, 200)
       const labelLines = doc.splitTextToSize(text, textColWidth - 2)
-      doc.text(labelLines.slice(0, 3), margin, y + 4)
+      const visibleLines = labelLines.slice(0, 3)
+      doc.text(visibleLines, margin, y + 4)
+      // PDF clickable link annotation over the text
+      doc.link(margin, y, textColWidth - 2, visibleLines.length * 4.5 + 1, { url })
+      // If label differs from URL, show URL in smaller gray text below
+      if (text !== url) {
+        const shortUrl = url.replace(/^https?:\/\//, '').slice(0, 55)
+        doc.setFontSize(6)
+        doc.setTextColor(120, 120, 120)
+        doc.text(shortUrl, margin, y + 4 + visibleLines.length * 4.5)
+      }
 
       if (qrDataUrl) {
         doc.addImage(qrDataUrl, 'PNG', pageWidth - margin - qrSize, y - 2, qrSize, qrSize)
