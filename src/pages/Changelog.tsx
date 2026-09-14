@@ -18,9 +18,40 @@ interface Entry {
 
 const VERSIONS: Entry[] = [
   {
+    version: 'v0.13β',
+    date: '14 de setembro de 2026',
+    current: true,
+    headline: 'Sidebar recolhível · Duplicação de planos · Recursos com rótulo · APA 7th no PDF',
+    sections: [
+      {
+        title: 'Novas funcionalidades',
+        items: [
+          'Sidebar recolhível no desktop: botão toggle (⊣/⊢) coloca a barra lateral em modo compacto com logo e ícone de expansão visíveis; estado persiste entre sessões via localStorage',
+          'Módulo Planos — botão "Duplicar plano" no card: clona um plano inteiro com novos IDs e título com sufixo "(cópia)", e abre o assistente de calendário para remapear as datas preservando títulos, descrições e referências de todas as aulas',
+          'Módulo Planos — Recursos Adicionais: aceita o formato "Texto (URL)" para exibir apenas o rótulo como link clicável; URLs puras continuam funcionando normalmente; recursos aparecem no cabeçalho do editor e na visão expandida do card',
+        ],
+      },
+      {
+        title: 'Melhorias no PDF (Planos)',
+        items: [
+          'Referências bibliográficas em formato APA 7th: cada referência em bloco próprio com autores, ano e título; URL/DOI em linha separada abaixo em azul; todo o bloco é um link PDF clicável via anotação doc.link()',
+          'Recursos adicionais: rótulo parsed exibido como texto azul com link PDF clicável; URL exibida em tamanho menor abaixo do rótulo quando difere do texto; QR code gerado para a URL correta',
+          'Títulos longos não ultrapassam mais a margem direita — margem de segurança de 2 mm adicionada ao cálculo de largura disponível',
+        ],
+      },
+      {
+        title: 'Correções',
+        items: [
+          'Módulo Planos: datas definidas no assistente de calendário não eram aplicadas ao editor ao criar ou duplicar um plano (useState captura apenas o valor inicial da prop; atualizações subsequentes eram ignoradas); corrigido forçando remontagem do PlanoEditor via key composta (id + startDate + contagem de aulas)',
+          'Sidebar: ícones de recolher e sair cortados na borda direita — overflow-hidden sem w-full no SidebarContent; corrigido adicionando w-full ao elemento raiz do componente',
+          'Sidebar recolhida: largura aumentada de w-12 (48 px) para w-14 (56 px) para acomodar ícones sem corte visual',
+        ],
+      },
+    ],
+  },
+  {
     version: 'v0.12β',
     date: '11 de maio de 2026',
-    current: true,
     headline: 'Atalhos de teclado no editor · Botão maximizar em Revisões · Correções',
     sections: [
       {

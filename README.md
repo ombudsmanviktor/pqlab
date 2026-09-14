@@ -221,7 +221,35 @@ meus-dados-pq/
 
 ## Changelog
 
-### v0.12β — 11 de maio de 2026 (versão atual estável)
+### v0.13β — 14 de setembro de 2026 (versão atual estável)
+
+#### Sidebar recolhível · Duplicação de planos · Recursos com rótulo · APA 7th no PDF
+
+#### Novas funcionalidades
+
+Sidebar recolhível no desktop: botão toggle (⊣/⊢) coloca a barra lateral em modo compacto com logo e ícone de expansão visíveis; estado persiste entre sessões via `localStorage`
+
+Módulo Planos — botão **Duplicar plano** no card: clona um plano inteiro com novos IDs e título com sufixo "(cópia)", e abre o assistente de calendário para remapear as datas preservando títulos, descrições e referências de todas as aulas
+
+Módulo Planos — **Recursos Adicionais**: aceita o formato `Texto (URL)` para exibir apenas o rótulo como link clicável; URLs puras continuam funcionando normalmente; recursos aparecem no cabeçalho do editor e na visão expandida do card
+
+#### Melhorias no PDF (Planos)
+
+Referências bibliográficas em formato **APA 7th**: cada referência em bloco próprio com autores, ano e título; URL/DOI em linha separada abaixo em azul; todo o bloco é um link PDF clicável via anotação `doc.link()`
+
+Recursos adicionais: rótulo parsed exibido como texto azul com link PDF clicável; URL exibida em tamanho menor abaixo do rótulo quando difere do texto; QR code gerado para a URL correta
+
+Títulos longos não ultrapassam mais a margem direita — margem de segurança de 2 mm adicionada ao cálculo de largura disponível
+
+#### Correções
+
+Módulo Planos: datas definidas no assistente de calendário não eram aplicadas ao editor ao criar ou duplicar um plano; corrigido forçando remontagem do `PlanoEditor` via `key` composta (`id + startDate + contagem de aulas`)
+
+Sidebar: ícones cortados na borda ao recolher; corrigido adicionando `w-full` ao elemento raiz do `SidebarContent` e aumentando a largura recolhida de `w-12` para `w-14`
+
+---
+
+### v0.12β — 11 de maio de 2026
 
 #### Atalhos de teclado no editor · Botão maximizar em Revisões · Correções
 
